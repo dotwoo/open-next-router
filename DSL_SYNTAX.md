@@ -320,7 +320,7 @@ Available modes depend on the built-in implementation. v0.1 includes:
 error { error_map openai; }
 ```
 
-- Currently only `openai` is allowed (whitelist enforced at load time).
+- Allowed modes (whitelist enforced at load time): `openai`, `common`, `passthrough`.
 - If multiple directives are present, the last one wins.
 
 ### 5.7 metrics (usage extraction)
@@ -664,7 +664,8 @@ Context: error
 Multiple: yes
 ```
 
-- Currently only `openai` is allowed (whitelist validated at load time).
+- Allowed modes: `openai`, `common`, `passthrough` (whitelist validated at load time).
+- `passthrough`: bypass error normalization and pass upstream error response through to the client.
 
 ### 7.9 metrics (usage extraction)
 
@@ -827,4 +828,3 @@ upstream {
   set_path concat("/v1/", $request.model_mapped, "/chat/completions");
 }
 ```
-

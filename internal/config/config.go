@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/edgefn/open-next-router/pkg/usageestimate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,6 +33,8 @@ type Config struct {
 		// File is an optional models list file. If not set or missing, /v1/models returns an empty list.
 		File string `yaml:"file"`
 	} `yaml:"models"`
+
+	UsageEstimation usageestimate.Config `yaml:"usage_estimation"`
 
 	TrafficDump struct {
 		Enabled     bool   `yaml:"enabled"`
@@ -83,6 +86,9 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Models.File) == "" {
 		cfg.Models.File = "./models.yaml"
 	}
+
+	usageestimate.ApplyDefaults(&cfg.UsageEstimation)
+
 	if strings.TrimSpace(cfg.TrafficDump.Dir) == "" {
 		cfg.TrafficDump.Dir = "./dumps"
 	}
@@ -121,6 +127,9 @@ func applyEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_MODELS_FILE")); v != "" {
 		cfg.Models.File = v
 	}
+
+	cfg.UsageEstimation.Enabled = envBool("ONR_USAGE_ESTIMATION_ENABLED", cfg.UsageEstimation.Enabled)
+
 	cfg.TrafficDump.Enabled = envBool("ONR_TRAFFIC_DUMP_ENABLED", cfg.TrafficDump.Enabled)
 	if v := strings.TrimSpace(os.Getenv("ONR_TRAFFIC_DUMP_DIR")); v != "" {
 		cfg.TrafficDump.Dir = v
@@ -149,6 +158,9 @@ func applyEnvOverrides(cfg *Config) {
 func validate(cfg *Config) error {
 	if strings.TrimSpace(cfg.Auth.APIKey) == "" {
 		return errors.New("auth.api_key is required (or set ONR_API_KEY)")
+	}
+	if err := usageestimate.Validate(&cfg.UsageEstimation); err != nil {
+		return err
 	}
 	if cfg.TrafficDump.MaxBytes < 0 {
 		return errors.New("traffic_dump.max_bytes must be non-negative")

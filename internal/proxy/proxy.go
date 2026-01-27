@@ -16,6 +16,7 @@ import (
 	"github.com/edgefn/open-next-router/internal/trafficdump"
 	"github.com/edgefn/open-next-router/pkg/dslconfig"
 	"github.com/edgefn/open-next-router/pkg/dslmeta"
+	"github.com/edgefn/open-next-router/pkg/usageestimate"
 )
 
 type ProviderKey struct {
@@ -34,6 +35,7 @@ type Result struct {
 	Status         int
 	LatencyMs      int64
 	Usage          map[string]any
+	UsageStage     string
 }
 
 type Client struct {
@@ -41,6 +43,7 @@ type Client struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	Registry     *dslconfig.Registry
+	UsageEst     *usageestimate.Config
 }
 
 func (c *Client) ProxyJSON(
@@ -190,17 +193,38 @@ func (c *Client) ProxyJSON(
 		if cfg, ok := pf.Usage.Select(m); ok {
 			u, _, err := dslconfig.ExtractUsage(m, cfg, respBody)
 			if err == nil && u != nil {
-				usage = map[string]any{
-					"input_tokens":  u.InputTokens,
-					"output_tokens": u.OutputTokens,
-					"total_tokens":  u.TotalTokens,
-				}
-				if u.InputTokenDetails != nil {
-					usage["cache_read_tokens"] = u.InputTokenDetails.CachedTokens
-					usage["cache_write_tokens"] = u.InputTokenDetails.CacheWriteTokens
-				}
+				out := usageestimate.Estimate(c.UsageEst, usageestimate.Input{
+					API:           api,
+					Model:         model,
+					UpstreamUsage: u,
+					RequestBody:   outBody,
+					ResponseBody:  respBody,
+				})
+				usage = usageMap(out.Usage)
+				usageStage := out.Stage
+
+				return &Result{
+					Provider:       provider,
+					ProviderKey:    key.Name,
+					ProviderSource: "dsl",
+					API:            api,
+					Stream:         stream,
+					Model:          model,
+					Status:         resp.StatusCode,
+					LatencyMs:      time.Since(start).Milliseconds(),
+					Usage:          usage,
+					UsageStage:     usageStage,
+				}, nil
 			}
 		}
+
+		out := usageestimate.Estimate(c.UsageEst, usageestimate.Input{
+			API:          api,
+			Model:        model,
+			RequestBody:  outBody,
+			ResponseBody: respBody,
+		})
+		usage = usageMap(out.Usage)
 
 		return &Result{
 			Provider:       provider,
@@ -212,6 +236,7 @@ func (c *Client) ProxyJSON(
 			Status:         resp.StatusCode,
 			LatencyMs:      time.Since(start).Milliseconds(),
 			Usage:          usage,
+			UsageStage:     out.Stage,
 		}, nil
 	}
 
@@ -224,7 +249,11 @@ func (c *Client) ProxyJSON(
 
 	// Always keep a tail buffer for best-effort usage extraction from SSE.
 	// Note: usage is usually sent near the end of the stream when enabled.
-	usageTail := &tailBuffer{limit: 256 << 10} // 256KB
+	tailLimit := 256 << 10 // 256KB
+	if c.UsageEst != nil && c.UsageEst.MaxStreamCollectBytes > 0 {
+		tailLimit = c.UsageEst.MaxStreamCollectBytes
+	}
+	usageTail := &tailBuffer{limit: tailLimit}
 
 	if rec := trafficdump.FromContext(gc); rec != nil && rec.MaxBytes() > 0 {
 		buf := &limitedBuffer{limit: rec.MaxBytes()}
@@ -252,22 +281,24 @@ func (c *Client) ProxyJSON(
 	}
 
 	// best-effort: extract usage from SSE stream tail (OpenAI-style only)
+	var upstreamUsage *dslconfig.Usage
 	if cfg, ok := pf.Usage.Select(m); ok && usageTail.Len() > 0 {
 		if eventJSON := extractLastSSEJSONWithUsage(usageTail.Bytes()); len(eventJSON) > 0 {
 			u, _, err := dslconfig.ExtractUsage(m, cfg, eventJSON)
 			if err == nil && u != nil {
-				usage = map[string]any{
-					"input_tokens":  u.InputTokens,
-					"output_tokens": u.OutputTokens,
-					"total_tokens":  u.TotalTokens,
-				}
-				if u.InputTokenDetails != nil {
-					usage["cache_read_tokens"] = u.InputTokenDetails.CachedTokens
-					usage["cache_write_tokens"] = u.InputTokenDetails.CacheWriteTokens
-				}
+				upstreamUsage = u
 			}
 		}
 	}
+
+	out := usageestimate.Estimate(c.UsageEst, usageestimate.Input{
+		API:           api,
+		Model:         model,
+		UpstreamUsage: upstreamUsage,
+		RequestBody:   outBody,
+		StreamTail:    usageTail.Bytes(),
+	})
+	usage = usageMap(out.Usage)
 	return &Result{
 		Provider:       provider,
 		ProviderKey:    key.Name,
@@ -278,7 +309,30 @@ func (c *Client) ProxyJSON(
 		Status:         resp.StatusCode,
 		LatencyMs:      time.Since(start).Milliseconds(),
 		Usage:          usage,
+		UsageStage:     out.Stage,
 	}, nil
+}
+
+func usageMap(u *dslconfig.Usage) map[string]any {
+	if u == nil {
+		return nil
+	}
+	// normalize totals for callers
+	out := usageestimate.Estimate(nil, usageestimate.Input{UpstreamUsage: u})
+	u = out.Usage
+	if u == nil {
+		return nil
+	}
+	m := map[string]any{
+		"input_tokens":  u.InputTokens,
+		"output_tokens": u.OutputTokens,
+		"total_tokens":  u.TotalTokens,
+	}
+	if u.InputTokenDetails != nil {
+		m["cache_read_tokens"] = u.InputTokenDetails.CachedTokens
+		m["cache_write_tokens"] = u.InputTokenDetails.CacheWriteTokens
+	}
+	return m
 }
 
 type limitedBuffer struct {

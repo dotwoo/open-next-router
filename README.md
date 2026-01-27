@@ -1,4 +1,17 @@
+<div align="center">
+
 # open-next-router
+
+**A lightweight API gateway for routing OpenAI-compatible endpoints to multiple upstream providers**
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Stars](https://img.shields.io/github/stars/r9s-ai/open-next-router?style=social)](https://github.com/r9s-ai/open-next-router)
+[![GitHub Issues](https://img.shields.io/github/issues/r9s-ai/open-next-router)](https://github.com/r9s-ai/open-next-router/issues)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/r9s-ai/open-next-router)
+
+</div>
+
+---
 
 open-next-router (ONR) is a lightweight API gateway that routes OpenAI-style endpoints to upstream providers via declarative provider configuration (DSL).
 
@@ -77,7 +90,9 @@ Observability:
 - [ONR] one-line request log
     • always: request_id, status, latency, client_ip, method, path
     • when available: api, model, provider, provider_source, stream, latency_ms
-    • usage (when available): input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens
+    • usage (when available): usage_stage, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens
+        - usage_stage=upstream: usage returned by upstream
+        - usage_stage=estimate_*: best-effort estimation when upstream usage is missing/zero
 
 - Optional traffic dump (file-based)
     • META

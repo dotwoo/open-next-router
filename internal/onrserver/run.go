@@ -45,6 +45,7 @@ func Run(cfgPath string) error {
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 		Registry:     reg,
+		UsageEst:     &cfg.UsageEstimation,
 	}
 
 	st := &state{

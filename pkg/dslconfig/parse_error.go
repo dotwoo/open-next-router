@@ -4,6 +4,8 @@ import "strings"
 
 var supportedErrorMapModes = map[string]struct{}{
 	"openai": {},
+	"common": {},
+	"passthrough": {},
 }
 
 func parseErrorPhase(s *scanner, errDir *ErrorDirective) error {

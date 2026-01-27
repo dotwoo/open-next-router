@@ -37,6 +37,9 @@ func requestLogger() gin.HandlerFunc {
 		if v, ok := c.Get("onr.model"); ok {
 			fields["model"] = v
 		}
+		if v, ok := c.Get("onr.usage_stage"); ok {
+			fields["usage_stage"] = v
+		}
 		if v, ok := c.Get("onr.usage_input_tokens"); ok {
 			fields["input_tokens"] = v
 		}

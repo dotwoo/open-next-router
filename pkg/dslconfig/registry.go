@@ -2,7 +2,6 @@ package dslconfig
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,54 +96,45 @@ func (r *Registry) ReloadFromDir(providersDir string) (LoadResult, error) {
 		// #nosec G304 -- provider files are loaded from a configured directory; filenames come from ReadDir of that directory.
 		contentBytes, err := os.ReadFile(path)
 		if err != nil {
-			log.Printf("dsl provider skipped: file=%s err=%v", path, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 		content, err := preprocessIncludes(path, string(contentBytes))
 		if err != nil {
-			log.Printf("dsl provider skipped: file=%s err=%v", path, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 		providerName, err := findProviderName(path, content)
 		if err != nil {
-			log.Printf("dsl provider skipped: file=%s err=%v", path, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 		providerName = normalizeProviderName(providerName)
 		expected := normalizeProviderName(strings.TrimSuffix(entry.Name(), providerConfExt))
 		if err := validateProviderName(providerName); err != nil {
-			log.Printf("dsl provider skipped: file=%s provider=%s err=%v", path, providerName, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 		if err := validateProviderName(expected); err != nil {
-			log.Printf("dsl provider skipped: file=%s expected=%s err=%v", path, expected, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 		if providerName != expected {
-			log.Printf("dsl provider skipped: file=%s provider=%s expected=%s err=%v", path, providerName, expected, fmt.Errorf("provider name mismatch"))
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 
 		if _, exists := next[providerName]; exists {
-			log.Printf("dsl provider skipped: file=%s provider=%s err=%v", path, providerName, fmt.Errorf("duplicate provider"))
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 
 		routing, headers, req, response, perr, usage, err := parseProviderConfig(path, content)
 		if err != nil {
-			log.Printf("dsl provider skipped: file=%s provider=%s err=%v", path, providerName, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
 		if err := validateProviderBaseURL(path, providerName, routing); err != nil {
-			log.Printf("dsl provider skipped: file=%s provider=%s err=%v", path, providerName, err)
 			skipped = append(skipped, entry.Name())
 			continue
 		}
