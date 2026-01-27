@@ -39,27 +39,7 @@ func NewRouter(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *
 		})
 	})
 
-	secured.POST("/admin/reload", func(c *gin.Context) {
-		res, err := reg.ReloadFromDir(cfg.Providers.Dir)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		ks, err := keystore.Load(cfg.Keys.File)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "providers": res})
-			return
-		}
-		st.SetKeys(ks)
-		mr, err := models.Load(cfg.Models.File)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "providers": res})
-			return
-		}
-		st.SetModelRouter(mr)
-		log.Printf("reload ok")
-		c.JSON(http.StatusOK, gin.H{"providers": res})
-	})
+	secured.POST("/admin/reload", handleReload(cfg, st, reg))
 
 	v1 := secured.Group("/v1")
 	v1.POST("/chat/completions", makeHandler(cfg, st, pclient, "chat.completions"))
@@ -122,5 +102,32 @@ func trafficDumpMiddleware(cfg *config.Config) gin.HandlerFunc {
 		}
 		c.Next()
 		rec.Close()
+	}
+}
+
+func handleReload(cfg *config.Config, st *state, reg *dslconfig.Registry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		res, err := reg.ReloadFromDir(cfg.Providers.Dir)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		ks, err := keystore.Load(cfg.Keys.File)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "providers": res})
+			return
+		}
+		st.SetKeys(ks)
+
+		mr, err := models.Load(cfg.Models.File)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "providers": res})
+			return
+		}
+		st.SetModelRouter(mr)
+
+		log.Printf("reload ok")
+		c.JSON(http.StatusOK, gin.H{"providers": res})
 	}
 }
