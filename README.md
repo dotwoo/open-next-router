@@ -156,3 +156,9 @@ Captured sections:
 - `=== UPSTREAM REQUEST ===`
 - `=== UPSTREAM RESPONSE ===`
 - `=== PROXY RESPONSE ===`
+
+# Partnership
+
+<a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2Fr9s-ai%2Fopen-next-router" target="_blank"><img src="https://llmapis.com/api/badge/r9s-ai/open-next-router" alt="LLMAPIS" width="60" /></a>
+
+_Partnership with [https://llmapis.com](https://llmapis.com) - Discover more AI tools and resources_
