@@ -8,6 +8,7 @@ models:
   gpt-4o-mini:
     providers: 
       - openai
+      - routertokens
     strategy: round_robin
     owned_by: open-next-router
 

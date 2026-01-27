@@ -10,6 +10,7 @@ open-next-router (ONR) is a lightweight API gateway that routes OpenAI-style end
 - Copy `keys.example.yaml` -> `keys.yaml`
 - Copy `models.example.yaml` -> `models.yaml`
 - Copy provider configs under `providers/` (or write your own)
+- Provider DSL reference: `DSL_SYNTAX.md`
 
 2) Run
 
