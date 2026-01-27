@@ -217,18 +217,26 @@ func (c *Client) ProxyJSON(
 
 	// stream passthrough
 	gc.Status(resp.StatusCode)
-	var dumpBuf []byte
-	var dumpTruncated bool
+	var (
+		dumpBuf       []byte
+		dumpTruncated bool
+	)
+
+	// Always keep a tail buffer for best-effort usage extraction from SSE.
+	// Note: usage is usually sent near the end of the stream when enabled.
+	usageTail := &tailBuffer{limit: 256 << 10} // 256KB
+
 	if rec := trafficdump.FromContext(gc); rec != nil && rec.MaxBytes() > 0 {
 		buf := &limitedBuffer{limit: rec.MaxBytes()}
-		tee := io.TeeReader(resp.Body, buf)
+		tee := io.TeeReader(resp.Body, io.MultiWriter(buf, usageTail))
 		if _, err := io.Copy(gc.Writer, tee); err != nil {
 			return nil, err
 		}
 		dumpBuf = buf.Bytes()
 		dumpTruncated = buf.Truncated()
 	} else {
-		if _, err := io.Copy(gc.Writer, resp.Body); err != nil {
+		tee := io.TeeReader(resp.Body, usageTail)
+		if _, err := io.Copy(gc.Writer, tee); err != nil {
 			return nil, err
 		}
 	}
@@ -242,6 +250,24 @@ func (c *Client) ProxyJSON(
 		trafficdump.AppendUpstreamResponse(gc, resp.Status, resp.Header, dumpBuf, binary, dumpTruncated)
 		trafficdump.AppendProxyResponse(gc, dumpBuf, binary, dumpTruncated, resp.StatusCode)
 	}
+
+	// best-effort: extract usage from SSE stream tail (OpenAI-style only)
+	if cfg, ok := pf.Usage.Select(m); ok && usageTail.Len() > 0 {
+		if eventJSON := extractLastSSEJSONWithUsage(usageTail.Bytes()); len(eventJSON) > 0 {
+			u, _, err := dslconfig.ExtractUsage(m, cfg, eventJSON)
+			if err == nil && u != nil {
+				usage = map[string]any{
+					"input_tokens":  u.InputTokens,
+					"output_tokens": u.OutputTokens,
+					"total_tokens":  u.TotalTokens,
+				}
+				if u.InputTokenDetails != nil {
+					usage["cache_read_tokens"] = u.InputTokenDetails.CachedTokens
+					usage["cache_write_tokens"] = u.InputTokenDetails.CacheWriteTokens
+				}
+			}
+		}
+	}
 	return &Result{
 		Provider:       provider,
 		ProviderKey:    key.Name,
@@ -251,6 +277,7 @@ func (c *Client) ProxyJSON(
 		Model:          model,
 		Status:         resp.StatusCode,
 		LatencyMs:      time.Since(start).Milliseconds(),
+		Usage:          usage,
 	}, nil
 }
 
@@ -280,3 +307,71 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 
 func (b *limitedBuffer) Bytes() []byte   { return b.buf.Bytes() }
 func (b *limitedBuffer) Truncated() bool { return b.truncated }
+
+// tailBuffer keeps the last N bytes written.
+type tailBuffer struct {
+	limit int
+	buf   []byte
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	if b.limit <= 0 {
+		return len(p), nil
+	}
+	if len(p) >= b.limit {
+		b.buf = append(b.buf[:0], p[len(p)-b.limit:]...)
+		return len(p), nil
+	}
+	if len(b.buf)+len(p) <= b.limit {
+		b.buf = append(b.buf, p...)
+		return len(p), nil
+	}
+	needDrop := len(b.buf) + len(p) - b.limit
+	b.buf = append(b.buf[needDrop:], p...)
+	return len(p), nil
+}
+
+func (b *tailBuffer) Bytes() []byte { return b.buf }
+func (b *tailBuffer) Len() int      { return len(b.buf) }
+
+// extractLastSSEJSONWithUsage scans a text/event-stream payload and returns the last JSON "data:" event
+// that contains a top-level "usage" field.
+//
+// This is best-effort and intentionally simple. If parsing fails, returns nil.
+func extractLastSSEJSONWithUsage(sse []byte) []byte {
+	lines := bytes.Split(sse, []byte{'\n'})
+	var (
+		curData [][]byte
+		last    []byte
+	)
+	flush := func() {
+		if len(curData) == 0 {
+			return
+		}
+		payload := bytes.TrimSpace(bytes.Join(curData, []byte{'\n'}))
+		curData = curData[:0]
+		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+			return
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(payload, &obj); err != nil {
+			return
+		}
+		if _, ok := obj["usage"]; ok {
+			last = payload
+		}
+	}
+
+	for _, raw := range lines {
+		line := bytes.TrimRight(raw, "\r")
+		if len(bytes.TrimSpace(line)) == 0 {
+			flush()
+			continue
+		}
+		if bytes.HasPrefix(line, []byte("data:")) {
+			curData = append(curData, bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:"))))
+		}
+	}
+	flush()
+	return last
+}

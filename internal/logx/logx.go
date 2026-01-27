@@ -69,31 +69,73 @@ func formatFields(fields map[string]any) string {
 	if len(fields) == 0 {
 		return ""
 	}
+	tokenKeys := map[string]struct{}{
+		"input_tokens":       {},
+		"output_tokens":      {},
+		"total_tokens":       {},
+		"cache_read_tokens":  {},
+		"cache_write_tokens": {},
+	}
+
 	keys := make([]string, 0, len(fields))
 	for k := range fields {
+		if _, ok := tokenKeys[k]; ok {
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
 	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
+	appendIfPresent := func(k string) {
 		v, ok := fields[k]
 		if !ok || v == nil {
-			continue
+			return
+		}
+		if _, isToken := tokenKeys[k]; isToken {
+			switch t := v.(type) {
+			case int:
+				if t == 0 {
+					return
+				}
+			case int64:
+				if t == 0 {
+					return
+				}
+			case float64:
+				if t == 0 {
+					return
+				}
+			}
 		}
 		switch t := v.(type) {
 		case string:
 			if strings.TrimSpace(t) == "" {
-				continue
+				return
 			}
 			parts = append(parts, fmt.Sprintf("%s=%s", k, t))
 		default:
 			s := strings.TrimSpace(fmt.Sprintf("%v", v))
 			if s == "" || s == "<nil>" {
-				continue
+				return
 			}
 			parts = append(parts, fmt.Sprintf("%s=%s", k, s))
 		}
+	}
+
+	for _, k := range keys {
+		appendIfPresent(k)
+	}
+
+	// Keep token usage fields at the end for readability.
+	for _, k := range []string{
+		"input_tokens",
+		"output_tokens",
+		"total_tokens",
+		"cache_read_tokens",
+		"cache_write_tokens",
+	} {
+		appendIfPresent(k)
 	}
 	return strings.Join(parts, " ")
 }

@@ -37,6 +37,21 @@ func requestLogger() gin.HandlerFunc {
 		if v, ok := c.Get("onr.model"); ok {
 			fields["model"] = v
 		}
+		if v, ok := c.Get("onr.usage_input_tokens"); ok {
+			fields["input_tokens"] = v
+		}
+		if v, ok := c.Get("onr.usage_output_tokens"); ok {
+			fields["output_tokens"] = v
+		}
+		if v, ok := c.Get("onr.usage_total_tokens"); ok {
+			fields["total_tokens"] = v
+		}
+		if v, ok := c.Get("onr.usage_cache_read_tokens"); ok {
+			fields["cache_read_tokens"] = v
+		}
+		if v, ok := c.Get("onr.usage_cache_write_tokens"); ok {
+			fields["cache_write_tokens"] = v
+		}
 		if v, ok := c.Get("onr.latency_ms"); ok {
 			fields["latency_ms"] = v
 		} else {

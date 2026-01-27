@@ -73,6 +73,23 @@ func makeHandler(cfg *config.Config, st *state, pclient *proxy.Client, api strin
 		}
 		if res != nil {
 			c.Set("onr.latency_ms", res.LatencyMs)
+			if res.Usage != nil {
+				if v, ok := res.Usage["input_tokens"]; ok {
+					c.Set("onr.usage_input_tokens", v)
+				}
+				if v, ok := res.Usage["output_tokens"]; ok {
+					c.Set("onr.usage_output_tokens", v)
+				}
+				if v, ok := res.Usage["total_tokens"]; ok {
+					c.Set("onr.usage_total_tokens", v)
+				}
+				if v, ok := res.Usage["cache_read_tokens"]; ok {
+					c.Set("onr.usage_cache_read_tokens", v)
+				}
+				if v, ok := res.Usage["cache_write_tokens"]; ok {
+					c.Set("onr.usage_cache_write_tokens", v)
+				}
+			}
 		}
 
 		_ = cfg

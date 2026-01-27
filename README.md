@@ -26,6 +26,7 @@ Create runtime config files first:
 cd open-next-router
 cp open-next-router.example.yaml open-next-router.yaml
 cp keys.example.yaml keys.yaml
+cp models.example.yaml models.yaml
 docker compose up --build
 ```
 
@@ -36,6 +37,52 @@ curl -sS http://127.0.0.1:3000/v1/chat/completions \
   -H "Authorization: Bearer change-me" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}]}'
+```
+
+## Architecture (high level)
+
+```text
+                 ┌─────────────────────────────────────────┐
+                 │              open-next-router           │
+                 │                (Gin server)             │
+                 └─────────────────────────────────────────┘
+                                   │
+                                   │ Auth: Bearer / x-api-key
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Request Pipeline                               │
+│                                                                             │
+│  ┌───────────────┐   ┌───────────────────────┐   ┌────────────────────────┐ │
+│  │ request_id    │   │ provider selection    │   │ DSL provider execution │ │
+│  │ response hdr  │   │ 1) x-onr-provider     │   │ - routing              │ │
+│  │               │   │ 2) models.yaml        │   │ - headers/auth         │ │
+│  └───────────────┘   └───────────────────────┘   │ - request transforms   │ │
+│                                                  └────────────────────────┘ |
+│                                                                             │
+│                                                                             │
+│                           ┌──────────────────────────┐                      │
+│                           │        upstream          │                      │
+│                           │ provider base_url + path │                      │
+│                           └──────────────────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+                 ┌──────────────────────────────────────────┐
+                 │                Upstream APIs             │
+                 │   OpenAI-compatible / Anthropic / etc.   │
+                 └──────────────────────────────────────────┘
+
+Observability:
+- [ONR] one-line request log
+    • always: request_id, status, latency, client_ip, method, path
+    • when available: api, model, provider, provider_source, stream, latency_ms
+    • usage (when available): input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens
+
+- Optional traffic dump (file-based)
+    • META
+    • ORIGIN
+    • UPSTREAM
+    • PROXY
 ```
 
 ## Auth
