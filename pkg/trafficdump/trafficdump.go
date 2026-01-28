@@ -60,6 +60,17 @@ func RequestID(c *gin.Context) string {
 }
 
 func Start(c *gin.Context, cfg Config) (*Recorder, error) {
+	return StartWithRequestID(c, cfg, "")
+}
+
+// StartWithRequestID starts a new traffic dump recorder using a provided request_id.
+//
+// This is designed to allow external projects to reuse this package while keeping
+// their own request_id generation logic.
+//
+// Template variables for cfg.FilePath:
+//   - {{.request_id}} (recommended)
+func StartWithRequestID(c *gin.Context, cfg Config, requestID string) (*Recorder, error) {
 	if c == nil {
 		return nil, errors.New("context is nil")
 	}
@@ -73,8 +84,17 @@ func Start(c *gin.Context, cfg Config) (*Recorder, error) {
 		return nil, errors.New("traffic_dump.max_bytes must be non-negative")
 	}
 
-	rid := RequestID(c)
-	data := map[string]string{"request_id": rid}
+	rid := strings.TrimSpace(requestID)
+	if rid == "" {
+		rid = RequestID(c)
+	} else {
+		c.Set(requestid.HeaderKey, rid)
+		c.Header(requestid.HeaderKey, rid)
+	}
+
+	data := map[string]string{
+		"request_id": rid,
+	}
 	tmpl, err := template.New("path").Parse(cfg.FilePath)
 	if err != nil {
 		return nil, err
@@ -108,7 +128,7 @@ func Start(c *gin.Context, cfg Config) (*Recorder, error) {
 	r.writeLine(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339)))
 	r.writeLine(fmt.Sprintf("request_id=%s", rid))
 	r.writeLine(fmt.Sprintf("method=%s", c.Request.Method))
-	r.writeLine(fmt.Sprintf("path=%s", c.Request.URL.String()))
+	r.writeLine(fmt.Sprintf("path=%s", maskURLIfNeeded(c.Request.URL.String(), r.mask)))
 	r.writeLine(fmt.Sprintf("client_ip=%s", c.ClientIP()))
 	r.writeLine("headers:")
 	for k, vals := range c.Request.Header {
