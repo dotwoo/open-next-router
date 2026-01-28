@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,12 @@ type Config struct {
 		// File is an optional models list file. If not set or missing, /v1/models returns an empty list.
 		File string `yaml:"file"`
 	} `yaml:"models"`
+
+	// UpstreamProxies configures outbound HTTP proxy by provider name.
+	// Values are proxy URLs (e.g. "http://127.0.0.1:7890").
+	UpstreamProxies struct {
+		ByProvider map[string]string `yaml:"by_provider"`
+	} `yaml:"upstream_proxies"`
 
 	UsageEstimation usageestimate.Config `yaml:"usage_estimation"`
 
@@ -87,6 +94,11 @@ func applyDefaults(cfg *Config) {
 		cfg.Models.File = "./models.yaml"
 	}
 
+	if cfg.UpstreamProxies.ByProvider == nil {
+		cfg.UpstreamProxies.ByProvider = map[string]string{}
+	}
+	cfg.UpstreamProxies.ByProvider = normalizeProviderStringMap(cfg.UpstreamProxies.ByProvider)
+
 	usageestimate.ApplyDefaults(&cfg.UsageEstimation)
 
 	if strings.TrimSpace(cfg.TrafficDump.Dir) == "" {
@@ -128,6 +140,8 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Models.File = v
 	}
 
+	applyProviderProxyEnvOverrides(cfg)
+
 	cfg.UsageEstimation.Enabled = envBool("ONR_USAGE_ESTIMATION_ENABLED", cfg.UsageEstimation.Enabled)
 
 	cfg.TrafficDump.Enabled = envBool("ONR_TRAFFIC_DUMP_ENABLED", cfg.TrafficDump.Enabled)
@@ -159,6 +173,17 @@ func validate(cfg *Config) error {
 	if strings.TrimSpace(cfg.Auth.APIKey) == "" {
 		return errors.New("auth.api_key is required (or set ONR_API_KEY)")
 	}
+	for prov, raw := range cfg.UpstreamProxies.ByProvider {
+		p := strings.ToLower(strings.TrimSpace(prov))
+		v := strings.TrimSpace(raw)
+		if p == "" || v == "" {
+			continue
+		}
+		// Keep this validation lightweight; deeper checks are done where the proxy URL is parsed.
+		if !strings.Contains(v, "://") {
+			return errors.New("upstream_proxies.by_provider must be a URL (e.g. http://127.0.0.1:7890)")
+		}
+	}
 	if err := usageestimate.Validate(&cfg.UsageEstimation); err != nil {
 		return err
 	}
@@ -181,4 +206,57 @@ func envBool(name string, def bool) bool {
 	default:
 		return def
 	}
+}
+
+var envProviderProxyPattern = regexp.MustCompile(`^ONR_UPSTREAM_PROXY_([A-Z0-9_]+)$`)
+
+func applyProviderProxyEnvOverrides(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.UpstreamProxies.ByProvider == nil {
+		cfg.UpstreamProxies.ByProvider = map[string]string{}
+	}
+	for _, kv := range os.Environ() {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		k := strings.TrimSpace(parts[0])
+		v := strings.TrimSpace(parts[1])
+		m := envProviderProxyPattern.FindStringSubmatch(k)
+		if m == nil {
+			continue
+		}
+		provider := strings.ToLower(strings.TrimSpace(m[1]))
+		if provider == "" {
+			continue
+		}
+		// Allow unsetting by providing empty string.
+		if v == "" {
+			delete(cfg.UpstreamProxies.ByProvider, provider)
+			continue
+		}
+		cfg.UpstreamProxies.ByProvider[provider] = v
+	}
+}
+
+func normalizeProviderStringMap(in map[string]string) map[string]string {
+	if in == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		key := strings.ToLower(strings.TrimSpace(k))
+		val := strings.TrimSpace(v)
+		if key == "" {
+			continue
+		}
+		if val == "" {
+			delete(out, key)
+			continue
+		}
+		out[key] = val
+	}
+	return out
 }

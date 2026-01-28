@@ -19,6 +19,17 @@ models:
   # Model routing file (model -> providers)
   file: "./models.yaml"
 
+upstream_proxies:
+  # Configure outbound HTTP proxy per provider (optional).
+  # Example:
+  #   by_provider:
+  #     openai: "http://127.0.0.1:7890"
+  #     anthropic: "http://127.0.0.1:7891"
+  # Supported schemes:
+  #   - http:// / https://
+  #   - socks5:// / socks5h:// (optional user/pass: socks5://user:pass@host:port)
+  by_provider: 
+
 usage_estimation:
   # Estimate token usage when upstream does not return usage (or returns all zeros).
   # This is best-effort and intended for local debugging / rough observability.

@@ -7,11 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	xproxy "golang.org/x/net/proxy"
 
 	"github.com/edgefn/open-next-router/pkg/dslconfig"
 	"github.com/edgefn/open-next-router/pkg/dslmeta"
@@ -44,6 +48,13 @@ type Client struct {
 	WriteTimeout time.Duration
 	Registry     *dslconfig.Registry
 	UsageEst     *usageestimate.Config
+
+	// ProxyByProvider maps provider name -> outbound HTTP proxy URL.
+	// Example: {"openai": "http://127.0.0.1:7890"}.
+	ProxyByProvider map[string]string
+
+	mu          sync.Mutex
+	httpByProxy map[string]*http.Client
 }
 
 func (c *Client) ProxyJSON(
@@ -165,7 +176,11 @@ func (c *Client) ProxyJSON(
 		trafficdump.AppendUpstreamRequest(gc, req.Method, upstreamURL, req.Header, limited, false, truncated)
 	}
 
-	resp, err := c.HTTP.Do(req)
+	httpc, err := c.httpClientForProvider(provider)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpc.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +342,84 @@ func (c *Client) ProxyJSON(
 		Usage:          usage,
 		UsageStage:     out.Stage,
 	}, nil
+}
+
+func (c *Client) httpClientForProvider(provider string) (*http.Client, error) {
+	// default client
+	base := c.HTTP
+	if base == nil {
+		base = http.DefaultClient
+	}
+
+	raw := ""
+	if c != nil && c.ProxyByProvider != nil {
+		raw = strings.TrimSpace(c.ProxyByProvider[strings.ToLower(strings.TrimSpace(provider))])
+	}
+	if raw == "" {
+		return base, nil
+	}
+
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u == nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("invalid upstream proxy url for provider=%s: %q", strings.TrimSpace(provider), raw)
+	}
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+
+	// Cache per proxy URL to preserve connection pooling.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.httpByProxy == nil {
+		c.httpByProxy = map[string]*http.Client{}
+	}
+	if hc, ok := c.httpByProxy[u.String()]; ok && hc != nil {
+		return hc, nil
+	}
+
+	// Clone transport and customize proxy/dialer.
+	var rt *http.Transport
+	if bt, ok := base.Transport.(*http.Transport); ok && bt != nil {
+		rt = bt.Clone()
+	} else if dt, ok := http.DefaultTransport.(*http.Transport); ok && dt != nil {
+		rt = dt.Clone()
+	} else {
+		rt = (&http.Transport{}).Clone()
+	}
+
+	switch scheme {
+	case "http", "https":
+		rt.Proxy = http.ProxyURL(u)
+	case "socks5", "socks5h":
+		var auth *xproxy.Auth
+		if u.User != nil {
+			user := strings.TrimSpace(u.User.Username())
+			pass, _ := u.User.Password()
+			if user != "" {
+				auth = &xproxy.Auth{User: user, Password: pass}
+			}
+		}
+		d, err := xproxy.SOCKS5("tcp", u.Host, auth, xproxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("init socks5 dialer for provider=%s: %w", strings.TrimSpace(provider), err)
+		}
+		// Ensure we don't accidentally pick up ProxyFromEnvironment from cloned transports.
+		rt.Proxy = nil
+		if cd, ok := d.(xproxy.ContextDialer); ok {
+			rt.DialContext = cd.DialContext
+		} else {
+			rt.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return d.Dial(network, addr)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported upstream proxy scheme for provider=%s: %q", strings.TrimSpace(provider), u.Scheme)
+	}
+
+	hc := &http.Client{
+		Timeout:   base.Timeout,
+		Transport: rt,
+	}
+	c.httpByProxy[u.String()] = hc
+	return hc, nil
 }
 
 func parseGeminiModelFromPath(path string) (model string, ok bool) {

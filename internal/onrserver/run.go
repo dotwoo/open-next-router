@@ -43,11 +43,12 @@ func Run(cfgPath string) error {
 	}
 
 	pclient := &proxy.Client{
-		HTTP:         httpClient,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		Registry:     reg,
-		UsageEst:     &cfg.UsageEstimation,
+		HTTP:            httpClient,
+		ReadTimeout:     readTimeout,
+		WriteTimeout:    writeTimeout,
+		Registry:        reg,
+		UsageEst:        &cfg.UsageEstimation,
+		ProxyByProvider: cfg.UpstreamProxies.ByProvider,
 	}
 
 	st := &state{

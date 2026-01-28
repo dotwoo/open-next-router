@@ -139,6 +139,27 @@ Example:
 
 - `providers.openai.keys[0].name: key1` -> `ONR_UPSTREAM_KEY_OPENAI_KEY1`
 
+## Upstream HTTP Proxy (per provider)
+
+You can configure an outbound HTTP proxy per upstream provider in `open-next-router.yaml`:
+
+```yaml
+upstream_proxies:
+  by_provider:
+    openai: "http://127.0.0.1:7890"
+    anthropic: "http://127.0.0.1:7891"
+```
+
+Supported proxy URL schemes:
+
+- `http://` / `https://`
+- `socks5://` / `socks5h://` (optional user/pass: `socks5://user:pass@host:port`)
+
+Or override via environment variables:
+
+- `ONR_UPSTREAM_PROXY_OPENAI=http://127.0.0.1:7890`
+- `ONR_UPSTREAM_PROXY_ANTHROPIC=http://127.0.0.1:7891`
+
 ## Provider Selection
 
 - Override: `x-onr-provider: <provider>`
