@@ -122,7 +122,7 @@ changelog:
       order: 999
 
 # Homebrew Tap configuration
-brews:
+homebrews:
   - name: onr
     repository:
       owner: r9s-ai
@@ -137,8 +137,7 @@ brews:
 # Docker image configuration
 dockers:
   - image_templates:
-      - "ghcr.io/r9s-ai/open-next-router:{{.Version}}"
-      - "ghcr.io/r9s-ai/open-next-router:latest"
+      - "ghcr.io/r9s-ai/open-next-router:{{.Version}}-amd64"
     dockerfile: Dockerfile.dist
     build_flag_templates:
       - "--pull"
@@ -164,15 +163,15 @@ dockers:
     goos: linux
     goarch: arm64
 
-# Docker manifest configuration (to combine amd64 and arm64 into a multi-arch image)
+# Docker manifest configuration
 docker_manifests:
   - name_template: "ghcr.io/r9s-ai/open-next-router:{{.Version}}"
     image_templates:
-      - "ghcr.io/r9s-ai/open-next-router:{{.Version}}"
+      - "ghcr.io/r9s-ai/open-next-router:{{.Version}}-amd64"
       - "ghcr.io/r9s-ai/open-next-router:{{.Version}}-arm64"
   - name_template: "ghcr.io/r9s-ai/open-next-router:latest"
     image_templates:
-      - "ghcr.io/r9s-ai/open-next-router:{{.Version}}"
+      - "ghcr.io/r9s-ai/open-next-router:{{.Version}}-amd64"
       - "ghcr.io/r9s-ai/open-next-router:{{.Version}}-arm64"
 
 # GitHub Release configuration
