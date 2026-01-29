@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/edgefn/open-next-router/internal/onrserver"
-	"github.com/edgefn/open-next-router/internal/version"
+	"github.com/r9s-ai/open-next-router/internal/onrserver"
+	"github.com/r9s-ai/open-next-router/internal/version"
 )
 
 func main() {

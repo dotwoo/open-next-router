@@ -33,9 +33,9 @@ builds:
     # ldflags to inject version information
     ldflags:
       - -s -w
-      - -X github.com/edgefn/open-next-router/internal/version.Version={{.Version}}
-      - -X github.com/edgefn/open-next-router/internal/version.Commit={{.Commit}}
-      - -X github.com/edgefn/open-next-router/internal/version.BuildDate={{.Date}}
+      - -X github.com/r9s-ai/open-next-router/internal/version.Version={{.Version}}
+      - -X github.com/r9s-ai/open-next-router/internal/version.Commit={{.Commit}}
+      - -X github.com/r9s-ai/open-next-router/internal/version.BuildDate={{.Date}}
 
   # Utility binary: onr-crypt
   - id: onr-crypt
@@ -55,9 +55,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/edgefn/open-next-router/internal/version.Version={{.Version}}
-      - -X github.com/edgefn/open-next-router/internal/version.Commit={{.Commit}}
-      - -X github.com/edgefn/open-next-router/internal/version.BuildDate={{.Date}}
+      - -X github.com/r9s-ai/open-next-router/internal/version.Version={{.Version}}
+      - -X github.com/r9s-ai/open-next-router/internal/version.Commit={{.Commit}}
+      - -X github.com/r9s-ai/open-next-router/internal/version.BuildDate={{.Date}}
 
 # Archive configuration
 archives:
@@ -146,7 +146,7 @@ release:
   footer: |
     ---
     
-    **Full Changelog**: https://github.com/edgefn/open-next-router/compare/{{.PreviousTag}}...{{.Tag}}
+    **Full Changelog**: https://github.com/r9s-ai/open-next-router/compare/{{.PreviousTag}}...{{.Tag}}
     
     ## Installation
     
@@ -160,7 +160,7 @@ release:
     
     ## Docker
     ```bash
-    docker pull ghcr.io/edgefn/open-next-router:{{.Version}}
+    docker pull ghcr.io/r9s-ai/open-next-router:{{.Version}}
     ```
 
 # Metadata

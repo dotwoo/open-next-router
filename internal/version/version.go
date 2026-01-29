@@ -8,15 +8,15 @@ import (
 var (
 	// Version is the current version of open-next-router
 	// This will be set via ldflags during build:
-	// go build -ldflags "-X github.com/edgefn/open-next-router/internal/version.Version=v1.2.3"
+	// go build -ldflags "-X github.com/r9s-ai/open-next-router/internal/version.Version=v1.2.3"
 	Version = "dev"
 
 	// Commit is the git commit hash
-	// Set via: -X github.com/edgefn/open-next-router/internal/version.Commit=abc123
+	// Set via: -X github.com/r9s-ai/open-next-router/internal/version.Commit=abc123
 	Commit = "unknown"
 
 	// BuildDate is the build date in RFC3339 format
-	// Set via: -X github.com/edgefn/open-next-router/internal/version.BuildDate=2026-01-29T11:24:55Z
+	// Set via: -X github.com/r9s-ai/open-next-router/internal/version.BuildDate=2026-01-29T11:24:55Z
 	BuildDate = "unknown"
 )
 

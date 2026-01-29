@@ -1,4 +1,4 @@
-module github.com/edgefn/open-next-router
+module github.com/r9s-ai/open-next-router
 
 go 1.24.0
 

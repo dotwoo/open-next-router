@@ -7,9 +7,9 @@ BUILD_DATE ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # Build flags
 LDFLAGS := -s -w \
-	-X github.com/edgefn/open-next-router/internal/version.Version=$(VERSION) \
-	-X github.com/edgefn/open-next-router/internal/version.Commit=$(COMMIT) \
-	-X github.com/edgefn/open-next-router/internal/version.BuildDate=$(BUILD_DATE)
+	-X github.com/r9s-ai/open-next-router/internal/version.Version=$(VERSION) \
+	-X github.com/r9s-ai/open-next-router/internal/version.Commit=$(COMMIT) \
+	-X github.com/r9s-ai/open-next-router/internal/version.BuildDate=$(BUILD_DATE)
 
 # Default target
 help: ## Show this help message

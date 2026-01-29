@@ -66,7 +66,7 @@ git push origin v1.2.0
 
 6. **验证发布**
 
-访问 [GitHub Releases](https://github.com/edgefn/open-next-router/releases) 查看新发布的版本。
+访问 [GitHub Releases](https://github.com/r9s-ai/open-next-router/releases) 查看新发布的版本。
 
 ---
 
