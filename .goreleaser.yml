@@ -122,7 +122,7 @@ changelog:
       order: 999
 
 # Homebrew Tap configuration
-homebrews:
+brews:
   - name: onr
     repository:
       owner: r9s-ai
