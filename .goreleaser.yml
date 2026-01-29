@@ -121,19 +121,19 @@ changelog:
     - title: 'Other Changes'
       order: 999
 
-# Homebrew Tap configuration
-brews:
-  - name: onr
-    repository:
-      owner: r9s-ai
-      name: homebrew-tap
-    token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/r9s-ai/open-next-router"
-    description: "A lightweight API gateway for routing OpenAI-compatible endpoints"
-    license: "MIT"
-    test: |
-      system "#{bin}/onr --version"
+# Homebrew Tap configuration (Commented out for now)
+# brews:
+#   - name: onr
+#     repository:
+#       owner: r9s-ai
+#       name: homebrew-tap
+#     token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+#     directory: Formula
+#     homepage: "https://github.com/r9s-ai/open-next-router"
+#     description: "A lightweight API gateway for routing OpenAI-compatible endpoints"
+#     license: "MIT"
+#     test: |
+#       system "#{bin}/onr --version"
 
 # Docker image configuration
 dockers:
