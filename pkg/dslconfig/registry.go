@@ -80,6 +80,9 @@ func (r *Registry) ReloadFromDir(providersDir string) (LoadResult, error) {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return LoadResult{}, nil
+		}
 		return LoadResult{}, fmt.Errorf("read providers dir %q: %w", dir, err)
 	}
 
