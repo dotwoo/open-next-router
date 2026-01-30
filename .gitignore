@@ -1,5 +1,5 @@
 # Local runtime configs / secrets
-open-next-router.yaml
+onr.yaml
 models.yaml
 keys.yaml
 .env
