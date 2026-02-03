@@ -16,6 +16,7 @@ type Config struct {
 		Listen         string `yaml:"listen"`
 		ReadTimeoutMs  int    `yaml:"read_timeout_ms"`
 		WriteTimeoutMs int    `yaml:"write_timeout_ms"`
+		PidFile        string `yaml:"pid_file"`
 	} `yaml:"server"`
 
 	Auth struct {
@@ -85,6 +86,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Server.WriteTimeoutMs <= 0 {
 		cfg.Server.WriteTimeoutMs = 60000
+	}
+	if strings.TrimSpace(cfg.Server.PidFile) == "" {
+		cfg.Server.PidFile = "/var/run/onr.pid"
 	}
 	if strings.TrimSpace(cfg.Providers.Dir) == "" {
 		cfg.Providers.Dir = "./config/providers"
@@ -168,6 +172,9 @@ func applyEnvOverrides(cfg *Config) {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.Server.WriteTimeoutMs = n
 		}
+	}
+	if v := strings.TrimSpace(os.Getenv("ONR_PID_FILE")); v != "" {
+		cfg.Server.PidFile = v
 	}
 	if v := strings.TrimSpace(os.Getenv("ONR_ACCESS_LOG_PATH")); v != "" {
 		cfg.Logging.AccessLogPath = v

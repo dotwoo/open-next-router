@@ -33,6 +33,16 @@ cd open-next-router
 go run ./cmd/onr --config ./onr.yaml
 ```
 
+3) Reload (nginx-like)
+
+After editing `onr.yaml` / `keys.yaml` / `models.yaml` / provider DSL files, you can reload runtime configs by sending SIGHUP:
+
+```bash
+go run ./cmd/onr --config ./onr.yaml -s reload
+```
+
+This uses `server.pid_file` (default: `/var/run/onr.pid`).
+
 For more information about version management and releases, see [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Docker Compose

@@ -2,6 +2,8 @@ server:
   listen: ":3000"
   read_timeout_ms: 60000
   write_timeout_ms: 60000
+  # PID file for `onr -s reload` (SIGHUP).
+  pid_file: "/var/run/onr.pid"
 
 auth:
   # Public API key for calling open-next-router

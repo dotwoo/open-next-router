@@ -1,13 +1,18 @@
 package onrserver
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/r9s-ai/open-next-router/internal/config"
@@ -31,6 +36,14 @@ func Run(cfgPath string) error {
 	}
 	if accessClose != nil {
 		defer func() { _ = accessClose.Close() }()
+	}
+
+	pidCleanup, err := writePIDFile(cfg)
+	if err != nil {
+		return fmt.Errorf("write pid file: %w", err)
+	}
+	if pidCleanup != nil {
+		defer func() { _ = pidCleanup.Close() }()
 	}
 
 	reg := dslconfig.NewRegistry()
@@ -69,6 +82,8 @@ func Run(cfgPath string) error {
 	}
 	st.SetStartedAtUnix(startedAt)
 
+	installReloadSignalHandler(cfg, st, reg)
+
 	engine := NewRouter(cfg, st, reg, pclient, accessLogger)
 
 	log.Printf("open-next-router listening on %s", cfg.Server.Listen)
@@ -105,4 +120,77 @@ func openAccessLogger(cfg *config.Config) (*log.Logger, io.Closer, error) {
 		return nil, nil, err
 	}
 	return log.New(f, "", log.LstdFlags), f, nil
+}
+
+type closerFunc func() error
+
+func (c closerFunc) Close() error { return c() }
+
+func writePIDFile(cfg *config.Config) (io.Closer, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	path := strings.TrimSpace(cfg.Server.PidFile)
+	if path == "" {
+		return nil, nil
+	}
+	dir := filepath.Dir(path)
+	if strings.TrimSpace(dir) != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return nil, err
+		}
+	}
+
+	tmp := path + ".tmp"
+	pid := strconv.Itoa(os.Getpid()) + "\n"
+	// #nosec G304 -- pid_file comes from trusted config/env.
+	if err := os.WriteFile(tmp, []byte(pid), 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	return closerFunc(func() error { return os.Remove(path) }), nil
+}
+
+func installReloadSignalHandler(cfg *config.Config, st *state, reg *dslconfig.Registry) {
+	if cfg == nil || st == nil || reg == nil {
+		return
+	}
+	var mu sync.Mutex
+	ch := make(chan os.Signal, 2)
+	signal.Notify(ch, syscall.SIGHUP)
+	go func() {
+		for range ch {
+			mu.Lock()
+			err := reloadRuntime(cfg, st, reg)
+			mu.Unlock()
+			if err != nil {
+				log.Printf("reload failed: %v", err)
+				continue
+			}
+			log.Printf("reload ok")
+		}
+	}()
+}
+
+func reloadRuntime(cfg *config.Config, st *state, reg *dslconfig.Registry) error {
+	if cfg == nil || st == nil || reg == nil {
+		return errors.New("reload: nil cfg/state/registry")
+	}
+	if _, err := reg.ReloadFromDir(cfg.Providers.Dir); err != nil {
+		return fmt.Errorf("reload providers dir %q: %w", cfg.Providers.Dir, err)
+	}
+	ks, err := keystore.Load(cfg.Keys.File)
+	if err != nil {
+		return fmt.Errorf("reload keys file %q: %w", cfg.Keys.File, err)
+	}
+	mr, err := models.Load(cfg.Models.File)
+	if err != nil {
+		return fmt.Errorf("reload models file %q: %w", cfg.Models.File, err)
+	}
+	st.SetKeys(ks)
+	st.SetModelRouter(mr)
+	return nil
 }
