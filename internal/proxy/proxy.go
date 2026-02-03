@@ -254,13 +254,6 @@ func (c *Client) handleStreamResponse(
 	respDir dslconfig.ResponseDirective,
 	resp *http.Response,
 ) (*Result, error) {
-	// stream passthrough
-	var (
-		dumpBuf       []byte
-		dumpTruncated bool
-		dumpHandled   bool
-	)
-
 	// copy headers
 	copyHeadersToClient(gc, resp.Header, false)
 
@@ -271,83 +264,14 @@ func (c *Client) handleStreamResponse(
 	}
 	usageTail := &tailBuffer{limit: tailLimit}
 
-	// stream transform (optional)
-	if strings.TrimSpace(respDir.Op) == "sse_parse" && strings.EqualFold(strings.TrimSpace(respDir.Mode), "openai_responses_to_openai_chat_chunks") {
-		var src io.Reader = resp.Body
-		ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-		if ce == "gzip" {
-			gr, err := gzip.NewReader(resp.Body)
-			if err != nil {
-				return nil, err
-			}
-			defer func() {
-				_ = gr.Close()
-			}()
-			src = gr
-			// Override encoding for downstream.
-			gc.Writer.Header().Del("Content-Encoding")
-		} else if ce != "" && ce != contentEncodingIdentity {
-			return nil, fmt.Errorf("cannot transform encoded upstream response (Content-Encoding=%q)", resp.Header.Get("Content-Encoding"))
-		}
+	dump := newStreamDumpState(gc)
+	defer dump.Append(gc, resp)
 
-		// Override to downstream chat SSE.
-		gc.Writer.Header().Set("Content-Type", "text/event-stream")
-		gc.Writer.Header().Set("Cache-Control", "no-cache")
-
-		gc.Status(resp.StatusCode)
-
-		var (
-			upDump *limitedBuffer
-			prDump *limitedBuffer
-		)
-		if rec := trafficdump.FromContext(gc); rec != nil && rec.MaxBytes() > 0 {
-			upDump = &limitedBuffer{limit: rec.MaxBytes()}
-			prDump = &limitedBuffer{limit: rec.MaxBytes()}
-			// Collect upstream bytes for dump, but collect proxy bytes for metrics/estimation.
-			src = io.TeeReader(src, upDump)
-			dst := io.MultiWriter(gc.Writer, prDump, usageTail)
-			if err := dslconfig.TransformOpenAIResponsesSSEToChatCompletionsSSE(src, dst); err != nil {
-				return nil, err
-			}
-			dumpBuf = upDump.Bytes()
-			dumpTruncated = upDump.Truncated()
-			// Append both upstream and proxy streams (best-effort).
-			trafficdump.AppendUpstreamResponse(gc, resp.Status, resp.Header, dumpBuf, false, dumpTruncated)
-			trafficdump.AppendProxyResponse(gc, prDump.Bytes(), false, prDump.Truncated(), resp.StatusCode)
-			dumpHandled = true
-		} else {
-			dst := io.MultiWriter(gc.Writer, usageTail)
-			if err := dslconfig.TransformOpenAIResponsesSSEToChatCompletionsSSE(src, dst); err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		// passthrough
-		gc.Status(resp.StatusCode)
-		if rec := trafficdump.FromContext(gc); rec != nil && rec.MaxBytes() > 0 {
-			buf := &limitedBuffer{limit: rec.MaxBytes()}
-			tee := io.TeeReader(resp.Body, io.MultiWriter(buf, usageTail))
-			if _, err := io.Copy(gc.Writer, tee); err != nil {
-				return nil, err
-			}
-			dumpBuf = buf.Bytes()
-			dumpTruncated = buf.Truncated()
-		} else {
-			tee := io.TeeReader(resp.Body, usageTail)
-			if _, err := io.Copy(gc.Writer, tee); err != nil {
-				return nil, err
-			}
-		}
+	if err := streamToDownstream(gc, respDir, resp, usageTail, dump); err != nil && !isClientDisconnectErr(err) {
+		return nil, err
 	}
 	if f, ok := gc.Writer.(http.Flusher); ok {
 		f.Flush()
-	}
-
-	if rec := trafficdump.FromContext(gc); rec != nil && rec.MaxBytes() > 0 && !dumpHandled && len(dumpBuf) > 0 && dumpBuf != nil {
-		ct := strings.ToLower(resp.Header.Get("Content-Type"))
-		binary := !strings.Contains(ct, "json") && !strings.HasPrefix(ct, "text/")
-		trafficdump.AppendUpstreamResponse(gc, resp.Status, resp.Header, dumpBuf, binary, dumpTruncated)
-		trafficdump.AppendProxyResponse(gc, dumpBuf, binary, dumpTruncated, resp.StatusCode)
 	}
 
 	// best-effort: extract metrics from SSE stream tail via pkg/dslconfig aggregator
@@ -746,56 +670,3 @@ func usageMap(u *dslconfig.Usage) map[string]any {
 	}
 	return m
 }
-
-type limitedBuffer struct {
-	buf       bytes.Buffer
-	limit     int
-	truncated bool
-}
-
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	remain := b.limit - b.buf.Len()
-	if remain <= 0 {
-		b.truncated = true
-		return len(p), nil
-	}
-	if len(p) > remain {
-		_, _ = b.buf.Write(p[:remain])
-		b.truncated = true
-		return len(p), nil
-	}
-	_, _ = b.buf.Write(p)
-	return len(p), nil
-}
-
-func (b *limitedBuffer) Bytes() []byte   { return b.buf.Bytes() }
-func (b *limitedBuffer) Truncated() bool { return b.truncated }
-
-// tailBuffer keeps the last N bytes written.
-type tailBuffer struct {
-	limit int
-	buf   []byte
-}
-
-func (b *tailBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	if len(p) >= b.limit {
-		b.buf = append(b.buf[:0], p[len(p)-b.limit:]...)
-		return len(p), nil
-	}
-	if len(b.buf)+len(p) <= b.limit {
-		b.buf = append(b.buf, p...)
-		return len(p), nil
-	}
-	needDrop := len(b.buf) + len(p) - b.limit
-	b.buf = append(b.buf[needDrop:], p...)
-	return len(p), nil
-}
-
-func (b *tailBuffer) Bytes() []byte { return b.buf }
-func (b *tailBuffer) Len() int      { return len(b.buf) }
