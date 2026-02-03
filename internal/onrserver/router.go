@@ -17,10 +17,12 @@ import (
 	"github.com/r9s-ai/open-next-router/pkg/trafficdump"
 )
 
-func NewRouter(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client) *gin.Engine {
+func NewRouter(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client, accessLogger *log.Logger) *gin.Engine {
 	r := gin.New()
 	r.Use(requestIDMiddleware())
-	r.Use(requestLogger())
+	if cfg.Logging.AccessLog {
+		r.Use(requestLogger(accessLogger))
+	}
 	r.Use(gin.Recovery())
 	if cfg.TrafficDump.Enabled {
 		r.Use(trafficDumpMiddleware(cfg))

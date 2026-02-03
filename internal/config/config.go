@@ -52,8 +52,9 @@ type Config struct {
 	} `yaml:"traffic_dump"`
 
 	Logging struct {
-		Level     string `yaml:"level"`
-		AccessLog bool   `yaml:"access_log"`
+		Level         string `yaml:"level"`
+		AccessLog     bool   `yaml:"access_log"`
+		AccessLogPath string `yaml:"access_log_path"`
 	} `yaml:"logging"`
 }
 
@@ -167,6 +168,9 @@ func applyEnvOverrides(cfg *Config) {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.Server.WriteTimeoutMs = n
 		}
+	}
+	if v := strings.TrimSpace(os.Getenv("ONR_ACCESS_LOG_PATH")); v != "" {
+		cfg.Logging.AccessLogPath = v
 	}
 }
 

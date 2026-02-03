@@ -28,7 +28,7 @@ upstream_proxies:
   # Supported schemes:
   #   - http:// / https://
   #   - socks5:// / socks5h:// (optional user/pass: socks5://user:pass@host:port)
-  by_provider: 
+  by_provider:
 
 usage_estimation:
   # Estimate token usage when upstream does not return usage (or returns all zeros).
@@ -51,4 +51,8 @@ traffic_dump:
 
 logging:
   level: "info"
+  # Access log output (nginx-like):
+  # - access_log: enable/disable
+  # - access_log_path: if set, append logs to this file; otherwise output to stdout
   access_log: true
+  access_log_path: ""

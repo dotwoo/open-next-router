@@ -2,6 +2,7 @@ package onrserver
 
 import (
 	"log"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,7 +11,10 @@ import (
 	"github.com/r9s-ai/open-next-router/internal/requestid"
 )
 
-func requestLogger() gin.HandlerFunc {
+func requestLogger(l *log.Logger) gin.HandlerFunc {
+	if l == nil {
+		l = log.New(os.Stdout, "", log.LstdFlags)
+	}
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
@@ -67,6 +71,6 @@ func requestLogger() gin.HandlerFunc {
 			fields["finish_reason"] = v
 		}
 
-		log.Println(logx.FormatRequestLine(time.Now(), status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields))
+		l.Println(logx.FormatRequestLine(time.Now(), status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields))
 	}
 }
