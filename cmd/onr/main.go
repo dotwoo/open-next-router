@@ -8,18 +8,24 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/r9s-ai/open-next-router/internal/config"
+	"github.com/r9s-ai/open-next-router/internal/keystore"
+	"github.com/r9s-ai/open-next-router/internal/models"
 	"github.com/r9s-ai/open-next-router/internal/onrserver"
 	"github.com/r9s-ai/open-next-router/internal/version"
+	"github.com/r9s-ai/open-next-router/pkg/dslconfig"
 	"gopkg.in/yaml.v3"
 )
 
 func main() {
 	var cfgPath string
 	var signalCmd string
+	var testConfig bool
 	var showVersion bool
 	flag.StringVar(&cfgPath, "config", "onr.yaml", "path to config yaml")
 	flag.StringVar(&cfgPath, "c", "onr.yaml", "path to config yaml (alias of --config)")
 	flag.StringVar(&signalCmd, "s", "", "send signal to a running onr (supported: reload)")
+	flag.BoolVar(&testConfig, "t", false, "test config and exit (no network)")
 	flag.BoolVar(&showVersion, "version", false, "show version information")
 	flag.Parse()
 
@@ -43,10 +49,48 @@ func main() {
 		}
 	}
 
+	if testConfig {
+		// Support nginx-like: `onr -t ./onr.yaml`
+		if flag.NArg() == 1 && strings.TrimSpace(flag.Arg(0)) != "" {
+			cfgPath = strings.TrimSpace(flag.Arg(0))
+		}
+		if err := runConfigTest(cfgPath); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "error: "+err.Error())
+			os.Exit(1)
+		}
+		fmt.Println("configuration ok")
+		return
+	}
+
 	if err := onrserver.Run(cfgPath); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+}
+
+func runConfigTest(cfgPath string) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	fmt.Println("ok: config")
+
+	res, err := dslconfig.ValidateProvidersDir(cfg.Providers.Dir)
+	if err != nil {
+		return fmt.Errorf("providers: %w", err)
+	}
+	fmt.Printf("ok: providers loaded=%d\n", len(res.LoadedProviders))
+
+	if _, err := keystore.Load(cfg.Keys.File); err != nil {
+		return fmt.Errorf("keys: %w", err)
+	}
+	fmt.Println("ok: keys")
+
+	if _, err := models.Load(cfg.Models.File); err != nil {
+		return fmt.Errorf("models: %w", err)
+	}
+	fmt.Println("ok: models")
+	return nil
 }
 
 func sendReloadSignal(cfgPath string) error {

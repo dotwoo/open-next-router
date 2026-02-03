@@ -43,6 +43,21 @@ go run ./cmd/onr --config ./onr.yaml -s reload
 
 This uses `server.pid_file` (default: `/var/run/onr.pid`).
 
+4) Test config (nginx-like)
+
+Test configs without starting the server:
+
+```bash
+# default config path
+go run ./cmd/onr -t
+
+# specify config file (flag)
+go run ./cmd/onr -t -c ./onr.yaml
+
+# specify config file (positional)
+go run ./cmd/onr -t ./onr.yaml
+```
+
 For more information about version management and releases, see [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Docker Compose
