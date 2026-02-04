@@ -17,6 +17,10 @@ type streamDumpState struct {
 	upTr  bool
 	prBuf []byte
 	prTr  bool
+
+	streamBytes                   int64
+	streamErrMsg                  string
+	streamIgnoredClientDisconnect bool
 }
 
 func newStreamDumpState(gc *gin.Context) *streamDumpState {
@@ -42,6 +46,17 @@ func (d *streamDumpState) SetProxy(buf []byte, truncated bool) {
 	d.prTr = truncated
 }
 
+func (d *streamDumpState) SetStreamResult(bytesCopied int64, err error, ignoredClientDisconnect bool) {
+	if d == nil {
+		return
+	}
+	d.streamBytes = bytesCopied
+	if err != nil {
+		d.streamErrMsg = err.Error()
+	}
+	d.streamIgnoredClientDisconnect = ignoredClientDisconnect
+}
+
 func (d *streamDumpState) Append(gc *gin.Context, resp *http.Response) {
 	if d == nil || !d.enabled || d.appended || gc == nil || resp == nil {
 		return
@@ -58,5 +73,6 @@ func (d *streamDumpState) Append(gc *gin.Context, resp *http.Response) {
 	}
 	prBinary := !strings.Contains(ctPr, "json") && !strings.HasPrefix(ctPr, "text/")
 	trafficdump.AppendProxyResponse(gc, d.prBuf, prBinary, d.prTr, resp.StatusCode)
+	trafficdump.AppendStreamSummary(gc, d.streamBytes, d.streamErrMsg, d.streamIgnoredClientDisconnect)
 	d.appended = true
 }

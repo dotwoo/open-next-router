@@ -94,10 +94,11 @@ func (c *Client) ProxyJSON(
 	reqBody := bctx.reqBody
 	respDir := bctx.respDir
 
-	resp, err := c.doUpstreamRequest(gc, provider, pf, m, reqBody)
+	resp, cancelUpstream, err := c.doUpstreamRequest(gc, provider, pf, m, reqBody)
 	if err != nil {
 		return nil, err
 	}
+	defer cancelUpstream()
 	defer func() {
 		_ = resp.Body.Close()
 	}()
@@ -267,7 +268,10 @@ func (c *Client) handleStreamResponse(
 	dump := newStreamDumpState(gc)
 	defer dump.Append(gc, resp)
 
-	if err := streamToDownstream(gc, respDir, resp, usageTail, dump); err != nil && !isClientDisconnectErr(err) {
+	n, err := streamToDownstream(gc, respDir, resp, usageTail, dump)
+	ignoredDisconnect := isClientDisconnectErr(err)
+	dump.SetStreamResult(n, err, ignoredDisconnect)
+	if err != nil && !ignoredDisconnect {
 		return nil, err
 	}
 	if f, ok := gc.Writer.(http.Flusher); ok {
@@ -468,21 +472,21 @@ func applyReqMap(gc *gin.Context, t dslconfig.RequestTransform, hasT bool, reqBo
 	}
 }
 
-func (c *Client) doUpstreamRequest(gc *gin.Context, provider string, pf dslconfig.ProviderFile, m *dslmeta.Meta, reqBody []byte) (*http.Response, error) {
+func (c *Client) doUpstreamRequest(gc *gin.Context, provider string, pf dslconfig.ProviderFile, m *dslmeta.Meta, reqBody []byte) (*http.Response, context.CancelFunc, error) {
 	if m == nil {
-		return nil, errors.New("meta is nil")
+		return nil, func() {}, errors.New("meta is nil")
 	}
 	baseURL := strings.TrimRight(strings.TrimSpace(m.BaseURL), "/")
 	if baseURL == "" {
-		return nil, errors.New("upstream base_url is empty")
+		return nil, func() {}, errors.New("upstream base_url is empty")
 	}
 	upstreamURL := baseURL + m.RequestURLPath
 
 	reqCtx, cancel := context.WithTimeout(gc.Request.Context(), c.WriteTimeout)
-	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, gc.Request.Method, upstreamURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, err
+		cancel()
+		return nil, func() {}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -495,9 +499,15 @@ func (c *Client) doUpstreamRequest(gc *gin.Context, provider string, pf dslconfi
 
 	httpc, err := c.httpClientForProvider(provider)
 	if err != nil {
-		return nil, err
+		cancel()
+		return nil, func() {}, err
 	}
-	return httpc.Do(req)
+	resp, err := httpc.Do(req)
+	if err != nil {
+		cancel()
+		return nil, func() {}, err
+	}
+	return resp, cancel, nil
 }
 
 func isEffectiveStream(clientStream bool, resp *http.Response) bool {

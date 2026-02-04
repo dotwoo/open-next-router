@@ -419,6 +419,22 @@ func AppendProxyResponse(c *gin.Context, body []byte, binary bool, truncated boo
 	}
 }
 
+// AppendStreamSummary appends a best-effort streaming summary section to the dump.
+// It is intentionally generic, so both passthrough and transformed streams can reuse it.
+func AppendStreamSummary(c *gin.Context, bytesCopied int64, errMsg string, ignoredClientDisconnect bool) {
+	if r := FromContext(c); r != nil {
+		r.writeLine("=== STREAM ===")
+		r.writeLine(fmt.Sprintf("bytes_copied=%d", bytesCopied))
+		if strings.TrimSpace(errMsg) != "" {
+			r.writeLine(fmt.Sprintf("error=%s", errMsg))
+		}
+		if ignoredClientDisconnect {
+			r.writeLine("ignored_client_disconnect=true")
+		}
+		r.writeLine("")
+	}
+}
+
 func LimitBytes(b []byte, max int) (out []byte, truncated bool) {
 	if max <= 0 {
 		return nil, false
