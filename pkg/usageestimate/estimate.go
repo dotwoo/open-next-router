@@ -44,17 +44,21 @@ func Estimate(cfg *Config, in Input) Output {
 	}
 
 	u, stage := normalizeUpstreamUsage(in.UpstreamUsage)
-	if u != nil && stage == StageUpstream {
-		return Output{Usage: u, Stage: stage}
-	}
-
-	// Decide whether to estimate.
-	if u != nil && !cfg.EstimateWhenMissingOrZero {
-		return Output{Usage: u, Stage: stage}
-	}
-	if u != nil && !isAllZero(u) {
-		// Partial usage is present; do not estimate unless it's all-zero.
-		return Output{Usage: u, Stage: stage}
+	if u != nil {
+		if !cfg.EstimateWhenMissingOrZero {
+			return Output{Usage: u, Stage: stage}
+		}
+		// Upstream usage exists; optionally estimate missing fields (common in streaming).
+		if stage == StageUpstream {
+			if outU, outStage := estimateMissingFields(cfg, in, u); outStage != StageUpstream {
+				return Output{Usage: outU, Stage: outStage}
+			}
+			return Output{Usage: u, Stage: stage}
+		}
+		// All-zero (or effectively missing) usage: allow estimation.
+		if !isAllZero(u) {
+			return Output{Usage: u, Stage: stage}
+		}
 	}
 	if u == nil && !cfg.EstimateWhenMissingOrZero {
 		return Output{Usage: nil, Stage: ""}
@@ -84,6 +88,70 @@ func Estimate(cfg *Config, in Input) Output {
 	}
 
 	return Output{Usage: est, Stage: StageEstimateBoth}
+}
+
+func estimateMissingFields(cfg *Config, in Input, u *dslconfig.Usage) (*dslconfig.Usage, string) {
+	if cfg == nil || u == nil {
+		return u, StageUpstream
+	}
+	needPrompt := u.InputTokens == 0
+	needCompletion := u.OutputTokens == 0
+	if !needPrompt && !needCompletion {
+		return u, StageUpstream
+	}
+
+	reqText := ""
+	if needPrompt {
+		reqText = extractRequestText(in.API, in.RequestBody, cfg.MaxRequestBytes)
+		if strings.TrimSpace(reqText) == "" {
+			needPrompt = false
+		}
+	}
+
+	respText := ""
+	if needCompletion {
+		if len(in.StreamTail) > 0 {
+			respText = extractStreamText(in.API, in.StreamTail, cfg.MaxStreamCollectBytes)
+		} else {
+			respText = extractResponseText(in.API, in.ResponseBody, cfg.MaxResponseBytes)
+		}
+		if strings.TrimSpace(respText) == "" {
+			needCompletion = false
+		}
+	}
+
+	if !needPrompt && !needCompletion {
+		return u, StageUpstream
+	}
+
+	out := *u
+	if needPrompt {
+		out.InputTokens = EstimateTokenByModel(in.Model, reqText)
+	}
+	if needCompletion {
+		out.OutputTokens = EstimateTokenByModel(in.Model, respText)
+	}
+	out.TotalTokens = out.InputTokens + out.OutputTokens
+
+	// Best-effort overhead for OpenAI-style chat messages only when prompt is estimated.
+	if needPrompt && strings.ToLower(strings.TrimSpace(in.API)) == apiChatCompletions {
+		msgCount := countMessages(in.RequestBody, cfg.MaxRequestBytes)
+		if msgCount > 0 {
+			out.InputTokens += msgCount*3 + 3
+			out.TotalTokens = out.InputTokens + out.OutputTokens
+		}
+	}
+
+	switch {
+	case needPrompt && needCompletion:
+		return &out, StageEstimateBoth
+	case needPrompt:
+		return &out, StageEstimatePrompt
+	case needCompletion:
+		return &out, StageEstimateCompletion
+	default:
+		return u, StageUpstream
+	}
 }
 
 func normalizeUpstreamUsage(u *dslconfig.Usage) (*dslconfig.Usage, string) {
