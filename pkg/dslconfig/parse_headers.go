@@ -182,7 +182,7 @@ func parseJSONSetStmt(s *scanner, t *RequestTransform) error {
 		return err
 	}
 	t.JSONOps = append(t.JSONOps, JSONOp{
-		Op:        "json_set",
+		Op:        jsonOpSet,
 		Path:      strings.TrimSpace(path),
 		ValueExpr: strings.TrimSpace(valueExpr),
 	})
@@ -206,7 +206,7 @@ func parseJSONDelStmt(s *scanner, t *RequestTransform) error {
 		return err
 	}
 	t.JSONOps = append(t.JSONOps, JSONOp{
-		Op:   "json_del",
+		Op:   jsonOpDel,
 		Path: strings.TrimSpace(path),
 	})
 	return nil
@@ -240,7 +240,7 @@ func parseJSONRenameStmt(s *scanner, t *RequestTransform) error {
 		return err
 	}
 	t.JSONOps = append(t.JSONOps, JSONOp{
-		Op:       "json_rename",
+		Op:       jsonOpRename,
 		FromPath: strings.TrimSpace(from),
 		ToPath:   strings.TrimSpace(to),
 	})

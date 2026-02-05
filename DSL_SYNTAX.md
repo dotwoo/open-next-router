@@ -336,6 +336,42 @@ Available modes depend on the built-in implementation. v0.1 includes:
 - `openai_responses_to_openai_chat` (`resp_map`): OpenAI/Azure `/responses` JSON → OpenAI `chat.completions` JSON
 - `openai_responses_to_openai_chat_chunks` (`sse_parse`): OpenAI/Azure `/responses` SSE → OpenAI `chat.completions` SSE chunks
 
+#### json_del / json_set / json_rename (response JSON ops)
+
+These directives apply **best-effort** JSON mutations to the downstream response body.
+
+```conf
+response {
+  json_del "$.usage";
+  json_set "$.foo" "bar";
+  json_rename "$.a" "$.b";
+}
+```
+
+Semantics:
+
+- Non-streaming JSON: apply to the whole JSON **object** response body.
+- Streaming SSE (`text/event-stream`): apply to each SSE event's joined `data:` JSON **object** payload.
+- Non-JSON / non-object payloads are passed through unchanged.
+- Execution order follows the order in the config block.
+
+Limitations (v0.1):
+
+- JSON path is restricted to object paths like `$.a.b.c` (no array indexes).
+
+#### sse_json_del_if (conditional delete for SSE)
+
+```conf
+response {
+  # If the SSE event JSON payload has $.type == "message_delta", delete $.usage in that event only.
+  sse_json_del_if "$.type" "message_delta" "$.usage";
+}
+```
+
+- Only applies to `text/event-stream`.
+- Condition requires the value at `<cond_path>` to be a string and to **exactly** equal `<equals>`.
+- Rules are executed in order, before `json_*` response ops.
+
 ### 5.6 error
 
 ```conf

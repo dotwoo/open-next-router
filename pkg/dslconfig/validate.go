@@ -74,6 +74,9 @@ func ValidateProviderFile(path string) (ProviderFile, error) {
 	if err := validateProviderRequestTransform(p, providerName, req); err != nil {
 		return ProviderFile{}, err
 	}
+	if err := validateProviderResponse(p, providerName, response); err != nil {
+		return ProviderFile{}, err
+	}
 	if err := validateProviderUsage(p, providerName, usage); err != nil {
 		return ProviderFile{}, err
 	}
@@ -92,6 +95,53 @@ func ValidateProviderFile(path string) (ProviderFile, error) {
 		Usage:    usage,
 		Finish:   finish,
 	}, nil
+}
+
+func validateProviderResponse(path, providerName string, resp ProviderResponse) error {
+	if err := validateResponseDirective(path, providerName, "defaults.response", resp.Defaults); err != nil {
+		return err
+	}
+	for i, m := range resp.Matches {
+		scope := fmt.Sprintf("match[%d].response", i)
+		if err := validateResponseDirective(path, providerName, scope, m.Response); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateResponseDirective(path, providerName, scope string, d ResponseDirective) error {
+	for i, r := range d.SSEJSONDelIf {
+		rs := fmt.Sprintf("%s.sse_json_del_if[%d]", scope, i)
+		if strings.TrimSpace(r.Equals) == "" {
+			return fmt.Errorf("provider %q in %q: %s equals must be non-empty", providerName, path, rs)
+		}
+		if _, err := parseObjectPath(r.CondPath); err != nil {
+			return fmt.Errorf("provider %q in %q: %s invalid cond path: %w", providerName, path, rs, err)
+		}
+		if _, err := parseObjectPath(r.DelPath); err != nil {
+			return fmt.Errorf("provider %q in %q: %s invalid del path: %w", providerName, path, rs, err)
+		}
+	}
+	for i, op := range d.JSONOps {
+		opScope := fmt.Sprintf("%s.json_op[%d]", scope, i)
+		switch strings.ToLower(strings.TrimSpace(op.Op)) {
+		case "json_set", "json_del":
+			if _, err := parseObjectPath(op.Path); err != nil {
+				return fmt.Errorf("provider %q in %q: %s invalid json path: %w", providerName, path, opScope, err)
+			}
+		case "json_rename":
+			if _, err := parseObjectPath(op.FromPath); err != nil {
+				return fmt.Errorf("provider %q in %q: %s invalid from path: %w", providerName, path, opScope, err)
+			}
+			if _, err := parseObjectPath(op.ToPath); err != nil {
+				return fmt.Errorf("provider %q in %q: %s invalid to path: %w", providerName, path, opScope, err)
+			}
+		default:
+			return fmt.Errorf("provider %q in %q: %s unsupported json op %q", providerName, path, opScope, op.Op)
+		}
+	}
+	return nil
 }
 
 func validateProviderRequestTransform(path, providerName string, req ProviderRequestTransform) error {

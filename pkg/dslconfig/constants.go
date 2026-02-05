@@ -5,4 +5,8 @@ const (
 	exprChannelKey     = "$channel.key"
 	exprRequestModel   = "$request.model"
 	exprRequestMapped  = "$request.model_mapped"
+
+	jsonOpSet    = "json_set"
+	jsonOpDel    = "json_del"
+	jsonOpRename = "json_rename"
 )

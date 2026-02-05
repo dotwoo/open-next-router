@@ -24,7 +24,10 @@ import (
 	"github.com/r9s-ai/open-next-router/pkg/usageestimate"
 )
 
-const contentEncodingIdentity = "identity"
+const (
+	contentEncodingIdentity = "identity"
+	contentEncodingGzip     = "gzip"
+)
 
 type ProviderKey struct {
 	Name            string
@@ -139,25 +142,22 @@ func (c *Client) handleNonStreamResponse(
 		trafficdump.AppendUpstreamResponse(gc, resp.Status, resp.Header, limited, binary, truncated)
 	}
 
-	// response transform (best-effort)
-	respOutBody := respBody
-	outCT := resp.Header.Get("Content-Type")
-	didTransform := false
-	if strings.TrimSpace(respDir.Op) == "resp_map" && strings.EqualFold(strings.TrimSpace(respDir.Mode), "openai_responses_to_openai_chat") {
-		decoded, err := maybeDecodeUpstreamBody(respBody, resp.Header.Get("Content-Encoding"))
-		if err != nil {
-			return nil, err
-		}
-		srcBody := respBody
-		if decoded != nil {
-			srcBody = decoded
-		}
-		respOutBody, err = dslconfig.MapOpenAIResponsesToChatCompletions(srcBody)
-		if err != nil {
-			return nil, err
-		}
-		outCT = "application/json"
-		didTransform = true
+	respOutBody, outCT, didTransform, err := mapNonStreamResponse(respBody, resp, respDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// metrics are extracted from the response after response mapping (resp_map),
+	// but before response json ops (json_del/json_set/json_rename) so operators can strip fields
+	// from downstream without losing upstream usage/finish_reason signals.
+	metricsBody := respOutBody
+
+	usage, usageStage := estimateNonStreamUsage(c.UsageEst, pf, m, api, model, reqBody, metricsBody)
+	finishReason := extractNonStreamFinishReason(pf, m, metricsBody)
+
+	respOutBody, outCT, didTransform, err = applyNonStreamResponseJSONOps(respOutBody, outCT, resp, m, respDir.JSONOps, didTransform)
+	if err != nil {
+		return nil, err
 	}
 
 	copyHeadersToClient(gc, resp.Header, didTransform)
@@ -170,46 +170,12 @@ func (c *Client) handleNonStreamResponse(
 		return nil, err
 	}
 
-	// traffic dump: proxy response (mapped bytes)
+	// traffic dump: proxy response (final downstream bytes)
 	if rec := trafficdump.FromContext(gc); rec != nil && rec.MaxBytes() > 0 {
 		ct := strings.ToLower(outCT)
 		binary := !strings.Contains(ct, "json") && !strings.HasPrefix(ct, "text/")
 		limited, truncated := trafficdump.LimitBytes(respOutBody, rec.MaxBytes())
 		trafficdump.AppendProxyResponse(gc, limited, binary, truncated, resp.StatusCode)
-	}
-
-	var usage map[string]any
-	usageStage := ""
-	if cfg, ok := pf.Usage.Select(m); ok {
-		u, _, err := dslconfig.ExtractUsage(m, cfg, respOutBody)
-		if err == nil && u != nil {
-			out := usageestimate.Estimate(c.UsageEst, usageestimate.Input{
-				API:           api,
-				Model:         model,
-				UpstreamUsage: u,
-				RequestBody:   reqBody,
-				ResponseBody:  respOutBody,
-			})
-			usage = usageMap(out.Usage)
-			usageStage = out.Stage
-		}
-	}
-	if usage == nil {
-		out := usageestimate.Estimate(c.UsageEst, usageestimate.Input{
-			API:          api,
-			Model:        model,
-			RequestBody:  reqBody,
-			ResponseBody: respOutBody,
-		})
-		usage = usageMap(out.Usage)
-		usageStage = out.Stage
-	}
-
-	finishReason := ""
-	if frCfg, ok := pf.Finish.Select(m); ok {
-		if v, err := dslconfig.ExtractFinishReason(m, frCfg, respOutBody); err == nil {
-			finishReason = strings.TrimSpace(v)
-		}
 	}
 
 	return &Result{
@@ -225,6 +191,133 @@ func (c *Client) handleNonStreamResponse(
 		UsageStage:     usageStage,
 		FinishReason:   finishReason,
 	}, nil
+}
+
+func mapNonStreamResponse(respBody []byte, resp *http.Response, respDir dslconfig.ResponseDirective) ([]byte, string, bool, error) {
+	respOutBody := respBody
+	outCT := ""
+	if resp != nil {
+		outCT = resp.Header.Get("Content-Type")
+	}
+	didTransform := false
+
+	if strings.TrimSpace(respDir.Op) != "resp_map" || !strings.EqualFold(strings.TrimSpace(respDir.Mode), "openai_responses_to_openai_chat") {
+		return respOutBody, outCT, didTransform, nil
+	}
+
+	decoded, err := maybeDecodeUpstreamBody(respBody, resp.Header.Get("Content-Encoding"))
+	if err != nil {
+		return nil, "", false, err
+	}
+	srcBody := respBody
+	if decoded != nil {
+		srcBody = decoded
+	}
+	respOutBody, err = dslconfig.MapOpenAIResponsesToChatCompletions(srcBody)
+	if err != nil {
+		return nil, "", false, err
+	}
+	return respOutBody, "application/json", true, nil
+}
+
+func estimateNonStreamUsage(
+	estCfg *usageestimate.Config,
+	pf dslconfig.ProviderFile,
+	meta *dslmeta.Meta,
+	api string,
+	model string,
+	reqBody []byte,
+	metricsBody []byte,
+) (usage map[string]any, usageStage string) {
+	if cfg, ok := pf.Usage.Select(meta); ok {
+		u, _, err := dslconfig.ExtractUsage(meta, cfg, metricsBody)
+		if err == nil && u != nil {
+			out := usageestimate.Estimate(estCfg, usageestimate.Input{
+				API:           api,
+				Model:         model,
+				UpstreamUsage: u,
+				RequestBody:   reqBody,
+				ResponseBody:  metricsBody,
+			})
+			return usageMap(out.Usage), out.Stage
+		}
+	}
+	out := usageestimate.Estimate(estCfg, usageestimate.Input{
+		API:          api,
+		Model:        model,
+		RequestBody:  reqBody,
+		ResponseBody: metricsBody,
+	})
+	return usageMap(out.Usage), out.Stage
+}
+
+func extractNonStreamFinishReason(pf dslconfig.ProviderFile, meta *dslmeta.Meta, metricsBody []byte) string {
+	finishReason := ""
+	if frCfg, ok := pf.Finish.Select(meta); ok {
+		if v, err := dslconfig.ExtractFinishReason(meta, frCfg, metricsBody); err == nil {
+			finishReason = strings.TrimSpace(v)
+		}
+	}
+	return finishReason
+}
+
+func applyNonStreamResponseJSONOps(
+	respOutBody []byte,
+	outCT string,
+	resp *http.Response,
+	meta *dslmeta.Meta,
+	ops []dslconfig.JSONOp,
+	didTransform bool,
+) ([]byte, string, bool, error) {
+	if len(ops) == 0 || resp == nil {
+		return respOutBody, outCT, didTransform, nil
+	}
+
+	ctLower := strings.ToLower(strings.TrimSpace(outCT))
+	ceLower := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	trim := bytes.TrimSpace(respOutBody)
+	looksJSON := strings.Contains(ctLower, "json") || (len(trim) > 0 && trim[0] == '{')
+	if strings.Contains(ctLower, "json") && ceLower == contentEncodingGzip {
+		looksJSON = true
+	}
+	if !looksJSON {
+		return respOutBody, outCT, didTransform, nil
+	}
+
+	bodyForOps := respOutBody
+	var root any
+	if err := json.Unmarshal(bodyForOps, &root); err != nil {
+		decoded, derr := maybeDecodeUpstreamBody(respOutBody, resp.Header.Get("Content-Encoding"))
+		if derr != nil {
+			return nil, "", false, derr
+		}
+		if decoded == nil {
+			return nil, "", false, fmt.Errorf("invalid json response for response json ops: %w", err)
+		}
+		bodyForOps = decoded
+		if err := json.Unmarshal(bodyForOps, &root); err != nil {
+			return nil, "", false, fmt.Errorf("invalid json response for response json ops: %w", err)
+		}
+		didTransform = true
+	}
+
+	obj, ok := root.(map[string]any)
+	if !ok || obj == nil {
+		return respOutBody, outCT, didTransform, nil
+	}
+	outAny, err := dslconfig.ApplyJSONOps(meta, obj, ops)
+	if err != nil {
+		return nil, "", false, err
+	}
+	outBytes, err := json.Marshal(outAny)
+	if err != nil {
+		return nil, "", false, err
+	}
+	respOutBody = outBytes
+	if strings.TrimSpace(outCT) == "" || !strings.Contains(ctLower, "json") {
+		outCT = "application/json"
+	}
+	return respOutBody, outCT, true, nil
 }
 
 func copyHeadersToClient(gc *gin.Context, hdr http.Header, didTransform bool) {
@@ -268,7 +361,7 @@ func (c *Client) handleStreamResponse(
 	dump := newStreamDumpState(gc)
 	defer dump.Append(gc, resp)
 
-	n, err := streamToDownstream(gc, respDir, resp, usageTail, dump)
+	n, err := streamToDownstream(gc, m, respDir, resp, usageTail, dump)
 	ignoredDisconnect := isClientDisconnectErr(err)
 	dump.SetStreamResult(n, err, ignoredDisconnect)
 	if err != nil && !ignoredDisconnect {
@@ -526,7 +619,7 @@ func maybeDecodeUpstreamBody(body []byte, contentEncoding string) ([]byte, error
 	switch ce {
 	case "", contentEncodingIdentity:
 		return nil, nil
-	case "gzip":
+	case contentEncodingGzip:
 		gr, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
 			return nil, err

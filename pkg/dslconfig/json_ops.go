@@ -29,16 +29,16 @@ func ApplyJSONOps(meta *dslmeta.Meta, in any, ops []JSONOp) (any, error) {
 
 	for _, op := range ops {
 		switch op.Op {
-		case "json_set":
+		case jsonOpSet:
 			val := evalJSONValueExpr(meta, op.ValueExpr)
 			if err := jsonSet(obj, op.Path, val); err != nil {
 				return nil, err
 			}
-		case "json_del":
+		case jsonOpDel:
 			if err := jsonDel(obj, op.Path); err != nil {
 				return nil, err
 			}
-		case "json_rename":
+		case jsonOpRename:
 			if err := jsonRename(obj, op.FromPath, op.ToPath); err != nil {
 				return nil, err
 			}
