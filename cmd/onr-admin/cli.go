@@ -15,6 +15,7 @@ import (
 	"github.com/r9s-ai/open-next-router/internal/keystore"
 	"github.com/r9s-ai/open-next-router/internal/models"
 	"github.com/r9s-ai/open-next-router/pkg/dslconfig"
+	"gopkg.in/yaml.v3"
 )
 
 func runCLI(args []string) error {
@@ -52,6 +53,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  token create            生成 Token Key (onr:v1?)")
 	fmt.Fprintln(w, "  token create phase      分阶段输出 Token 生成结果")
 	fmt.Fprintln(w, "  crypto encrypt          将明文加密为 ENC[v1:aesgcm:...]")
+	fmt.Fprintln(w, "  crypto encrypt-keys     一键加密 keys.yaml 中明文 value")
 	fmt.Fprintln(w, "  crypto gen-master-key   生成随机 ONR_MASTER_KEY")
 	fmt.Fprintln(w, "  validate all            校验 keys/models/providers")
 	fmt.Fprintln(w, "  validate keys           校验 keys.yaml")
@@ -266,11 +268,13 @@ func accessKeyByName(keysPath, name string) (string, error) {
 
 func runCrypto(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: onr-admin crypto <encrypt|gen-master-key> [flags]")
+		return errors.New("usage: onr-admin crypto <encrypt|encrypt-keys|gen-master-key> [flags]")
 	}
 	switch args[0] {
 	case "encrypt":
 		return runCryptoEncrypt(args[1:])
+	case "encrypt-keys":
+		return runCryptoEncryptKeys(args[1:])
 	case "gen-master-key":
 		return runCryptoGenMasterKey(args[1:])
 	default:
@@ -338,6 +342,116 @@ func runCryptoGenMasterKey(args []string) error {
 	}
 	fmt.Println(out)
 	return nil
+}
+
+func runCryptoEncryptKeys(args []string) error {
+	var cfgPath string
+	var keysPath string
+	var backup bool
+	var dryRun bool
+
+	fs := flag.NewFlagSet("crypto encrypt-keys", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&cfgPath, "config", "onr.yaml", "config yaml path")
+	fs.StringVar(&keysPath, "keys", "", "keys.yaml path")
+	fs.BoolVar(&backup, "backup", true, "backup keys.yaml before saving")
+	fs.BoolVar(&dryRun, "dry-run", false, "print result without writing file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, _ := loadConfigIfExists(strings.TrimSpace(cfgPath))
+	keysPath, _ = resolveDataPaths(cfg, keysPath, "")
+	doc, err := loadOrInitKeysDoc(keysPath)
+	if err != nil {
+		return fmt.Errorf("load keys: %w", err)
+	}
+
+	n, err := encryptKeysDocValues(doc)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		fmt.Println("encrypt-keys: no plaintext value found")
+		return nil
+	}
+	if dryRun {
+		fmt.Printf("encrypt-keys: %d value(s) would be encrypted (dry-run)\n", n)
+		return nil
+	}
+
+	if err := validateKeysDoc(doc); err != nil {
+		return err
+	}
+	b, err := encodeYAML(doc)
+	if err != nil {
+		return err
+	}
+	if err := writeAtomic(keysPath, b, backup); err != nil {
+		return err
+	}
+	fmt.Printf("encrypt-keys: encrypted %d value(s) in %s\n", n, keysPath)
+	return nil
+}
+
+func encryptKeysDocValues(y *yaml.Node) (int, error) {
+	changed := 0
+	pm, err := providersMap(y)
+	if err != nil {
+		return 0, err
+	}
+	for i := 0; i+1 < len(pm.Content); i += 2 {
+		providerNode := pm.Content[i+1]
+		if providerNode == nil || providerNode.Kind != yaml.MappingNode {
+			continue
+		}
+		keysNode, ok := mappingGet(providerNode, "keys")
+		if !ok || keysNode == nil || keysNode.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, it := range keysNode.Content {
+			if c, err := encryptValueFieldIfNeeded(it); err != nil {
+				return 0, err
+			} else {
+				changed += c
+			}
+		}
+	}
+
+	aks, err := accessKeysSeq(y)
+	if err != nil {
+		return 0, err
+	}
+	for _, it := range aks.Content {
+		if c, err := encryptValueFieldIfNeeded(it); err != nil {
+			return 0, err
+		} else {
+			changed += c
+		}
+	}
+	return changed, nil
+}
+
+func encryptValueFieldIfNeeded(item *yaml.Node) (int, error) {
+	if item == nil || item.Kind != yaml.MappingNode {
+		return 0, nil
+	}
+	v, ok := mappingGet(item, "value")
+	if !ok || v == nil {
+		return 0, nil
+	}
+	raw := strings.TrimSpace(v.Value)
+	if raw == "" || strings.HasPrefix(raw, "ENC[") {
+		return 0, nil
+	}
+	enc, err := keystore.Encrypt(raw)
+	if err != nil {
+		return 0, fmt.Errorf("encrypt value failed: %w", err)
+	}
+	v.Kind = yaml.ScalarNode
+	v.Tag = "!!str"
+	v.Value = enc
+	return 1, nil
 }
 
 func runValidate(args []string) error {
