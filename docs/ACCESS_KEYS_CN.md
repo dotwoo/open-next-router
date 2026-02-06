@@ -107,6 +107,9 @@ go run ./cmd/onr-admin token create --config ./onr.yaml --access-key-name client
 # 生成 ENC[...] 加密值
 go run ./cmd/onr-admin crypto encrypt --text 'sk-xxxx'
 
+# 生成随机 ONR_MASTER_KEY（base64）
+go run ./cmd/onr-admin crypto gen-master-key --export
+
 # 校验 keys/models/providers
 go run ./cmd/onr-admin validate all --config ./onr.yaml
 

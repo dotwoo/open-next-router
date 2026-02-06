@@ -231,6 +231,9 @@ go run ./cmd/onr-admin token create --config ./onr.yaml --access-key-name client
 # encrypt secret to ENC[...]
 go run ./cmd/onr-admin crypto encrypt --text 'sk-xxxx'
 
+# generate random ONR_MASTER_KEY (base64)
+go run ./cmd/onr-admin crypto gen-master-key --export
+
 # validate configs
 go run ./cmd/onr-admin validate all --config ./onr.yaml
 

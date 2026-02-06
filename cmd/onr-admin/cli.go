@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -51,6 +52,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  token create            生成 Token Key (onr:v1?)")
 	fmt.Fprintln(w, "  token create phase      分阶段输出 Token 生成结果")
 	fmt.Fprintln(w, "  crypto encrypt          将明文加密为 ENC[v1:aesgcm:...]")
+	fmt.Fprintln(w, "  crypto gen-master-key   生成随机 ONR_MASTER_KEY")
 	fmt.Fprintln(w, "  validate all            校验 keys/models/providers")
 	fmt.Fprintln(w, "  validate keys           校验 keys.yaml")
 	fmt.Fprintln(w, "  validate models         校验 models.yaml")
@@ -264,11 +266,13 @@ func accessKeyByName(keysPath, name string) (string, error) {
 
 func runCrypto(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: onr-admin crypto encrypt [--text xxx]")
+		return errors.New("usage: onr-admin crypto <encrypt|gen-master-key> [flags]")
 	}
 	switch args[0] {
 	case "encrypt":
 		return runCryptoEncrypt(args[1:])
+	case "gen-master-key":
+		return runCryptoGenMasterKey(args[1:])
 	default:
 		return fmt.Errorf("unknown crypto subcommand %q", args[0])
 	}
@@ -296,6 +300,41 @@ func runCryptoEncrypt(args []string) error {
 	out, err := keystore.Encrypt(plain)
 	if err != nil {
 		return fmt.Errorf("encrypt: %w", err)
+	}
+	fmt.Println(out)
+	return nil
+}
+
+func runCryptoGenMasterKey(args []string) error {
+	var format string
+	var exportLine bool
+
+	fs := flag.NewFlagSet("crypto gen-master-key", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&format, "format", "base64", "output format: base64|base64url")
+	fs.BoolVar(&exportLine, "export", false, "print as shell export line")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Errorf("generate random key: %w", err)
+	}
+
+	var out string
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "base64":
+		out = base64.StdEncoding.EncodeToString(buf)
+	case "base64url":
+		out = base64.RawURLEncoding.EncodeToString(buf)
+	default:
+		return errors.New("invalid --format, expect base64 or base64url")
+	}
+
+	if exportLine {
+		fmt.Printf("export ONR_MASTER_KEY='%s'\n", out)
+		return nil
 	}
 	fmt.Println(out)
 	return nil
