@@ -87,20 +87,29 @@ Token Key 的 query 参数：
 - `k` / `k64`：访问 key（必需）
 - `p`：provider（可选；不填则走原有 provider 选择逻辑）
 - `m`：model override（可选；存在则强制替换请求里的 model；BYOK 模式下也生效）
-- `uk`：BYOK upstream key（可选；存在则 ONR 直接用该 key 调上游）
+- `uk` / `uk64`：BYOK upstream key（可选；`uk` 为明文，`uk64` 为 base64url 编码；存在则 ONR 直接用该 key 调上游）
 
 示例：
 
 - 指定 provider：`onr:v1?k64=...&p=openai`
 - 强制模型：`onr:v1?k64=...&m=gpt-4o-mini`
-- BYOK + provider + 强制模型：`onr:v1?k64=...&p=openai&uk=sk-xxx&m=gpt-4o-mini`
+- BYOK + provider + 强制模型（明文上游 key）：`onr:v1?k64=...&p=openai&uk=sk-xxx&m=gpt-4o-mini`
+- BYOK + provider + 强制模型（base64url 上游 key）：`onr:v1?k64=...&p=openai&uk64=...&m=gpt-4o-mini`
 
-## 4. onr-admin 交互式管理
+## 4. onr-admin 子命令
 
-`onr-admin` 支持管理 `providers` / `access_keys` 并生成 Token Key：
+`onr-admin` 使用分层子命令（非交互优先），支持管理配置、生成 Token Key、加密密钥：
 
 ```bash
-go run ./cmd/onr-admin --config ./onr.yaml
-# 或覆盖 keys.yaml 路径
-go run ./cmd/onr-admin --keys ./keys.yaml
+# 生成 Token Key
+go run ./cmd/onr-admin token create --config ./onr.yaml --access-key-name client-a -p openai -m gpt-4o-mini
+
+# 生成 ENC[...] 加密值
+go run ./cmd/onr-admin crypto encrypt --text 'sk-xxxx'
+
+# 校验 keys/models/providers
+go run ./cmd/onr-admin validate all --config ./onr.yaml
+
+# 进入交互式 TUI
+go run ./cmd/onr-admin tui --config ./onr.yaml
 ```

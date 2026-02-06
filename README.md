@@ -159,12 +159,15 @@ Supported query params:
 - `p`: provider (optional)
 - `m`: model override (optional; always enforced)
 - `uk`: BYOK upstream key (optional; when set, ONR uses it directly to call upstream)
-- `exp`: unix seconds expiry (optional)
 
 Generate a token key:
 
 ```bash
-go run ./cmd/onr-admin --config ./onr.yaml
+go run ./cmd/onr-admin token create \
+  --config ./onr.yaml \
+  --access-key-name client-a \
+  --provider openai \
+  --model gpt-4o-mini
 ```
 
 More details: see `docs/ACCESS_KEYS_CN.md`.
@@ -187,7 +190,7 @@ To generate an encrypted value:
 
 ```bash
 export ONR_MASTER_KEY='...'
-echo -n 'sk-xxxx' | go run ./cmd/onr-crypt
+echo -n 'sk-xxxx' | go run ./cmd/onr-admin crypto encrypt
 ```
 
 ### Env override (recommended for CI / docker / k8s)
@@ -219,14 +222,20 @@ Env override:
 
 ## Admin CLI (onr-admin)
 
-Interactive management for `keys.yaml` / `models.yaml` + token key generation:
+`onr-admin` uses subcommands (kubeadm-style):
 
 ```bash
-go run ./cmd/onr-admin --config ./onr.yaml
-# or override keys path
-go run ./cmd/onr-admin --keys ./keys.yaml
-# or override models path
-go run ./cmd/onr-admin --models ./models.yaml
+# generate token key
+go run ./cmd/onr-admin token create --config ./onr.yaml --access-key-name client-a -p openai -m gpt-4o-mini
+
+# encrypt secret to ENC[...]
+go run ./cmd/onr-admin crypto encrypt --text 'sk-xxxx'
+
+# validate configs
+go run ./cmd/onr-admin validate all --config ./onr.yaml
+
+# open interactive UI
+go run ./cmd/onr-admin tui --config ./onr.yaml
 ```
 
 ## Upstream HTTP Proxy (per provider)

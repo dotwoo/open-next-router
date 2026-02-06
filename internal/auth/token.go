@@ -46,7 +46,7 @@ func IsTokenKey(raw string) bool {
 // - k / k64: access key (required)
 // - p: provider (optional)
 // - m: model_override (optional)
-// - uk: upstream key for BYOK (optional; implies mode=byok)
+// - uk / uk64: upstream key for BYOK (optional; implies mode=byok)
 func ParseTokenKeyV1(raw string) (*TokenClaims, string, error) {
 	s := strings.TrimSpace(raw)
 	if !strings.HasPrefix(s, "onr:v1?") {
@@ -60,7 +60,7 @@ func ParseTokenKeyV1(raw string) (*TokenClaims, string, error) {
 
 	accessKey := ""
 	if k64 := strings.TrimSpace(vals.Get("k64")); k64 != "" {
-		b, err := base64.RawURLEncoding.DecodeString(k64)
+		b, err := base64.RawURLEncoding.Strict().DecodeString(k64)
 		if err != nil {
 			return nil, "", fmt.Errorf("invalid k64")
 		}
@@ -71,10 +71,21 @@ func ParseTokenKeyV1(raw string) (*TokenClaims, string, error) {
 		return nil, "", fmt.Errorf("missing k or k64")
 	}
 
+	upstreamKey := ""
+	if uk64 := strings.TrimSpace(vals.Get("uk64")); uk64 != "" {
+		b, err := base64.RawURLEncoding.Strict().DecodeString(uk64)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid uk64")
+		}
+		upstreamKey = strings.TrimSpace(string(b))
+	} else {
+		upstreamKey = strings.TrimSpace(vals.Get("uk"))
+	}
+
 	claims := &TokenClaims{
 		Provider:      strings.ToLower(strings.TrimSpace(vals.Get("p"))),
 		ModelOverride: strings.TrimSpace(vals.Get("m")),
-		UpstreamKey:   strings.TrimSpace(vals.Get("uk")),
+		UpstreamKey:   upstreamKey,
 		Mode:          TokenModeONR,
 	}
 	if claims.UpstreamKey != "" {
