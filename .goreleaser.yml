@@ -8,8 +8,10 @@ before:
   hooks:
     # Run tests before building
     - go test ./...
+    - cd cmd/onr-admin && go test ./...
     # Run go mod tidy to ensure dependencies are clean
     - go mod tidy
+    - cd cmd/onr-admin && go mod tidy
 
 # Build configuration
 builds:
@@ -39,7 +41,8 @@ builds:
 
   # Utility binary: onr-admin
   - id: onr-admin
-    main: ./cmd/onr-admin
+    dir: ./cmd/onr-admin
+    main: .
     binary: onr-admin
     env:
       - CGO_ENABLED=0

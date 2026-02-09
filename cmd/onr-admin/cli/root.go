@@ -51,19 +51,15 @@ func newTUICmd() *cobra.Command {
 	}
 	fs := cmd.Flags()
 	fs.StringVarP(&opts.cfgPath, "config", "c", "onr.yaml", "config yaml path")
-	fs.StringVar(&opts.keysPath, "keys", "", "keys.yaml path (override config keys.file)")
-	fs.StringVar(&opts.modelsPath, "models", "", "models.yaml path (override config models.file)")
 	return cmd
 }
 
 type tuiOptions struct {
-	cfgPath    string
-	keysPath   string
-	modelsPath string
-	stdin      *os.File
-	stdout     *os.File
+	cfgPath string
+	stdin   *os.File
+	stdout  *os.File
 }
 
 func runTUIWithOptions(opts tuiOptions) error {
-	return tui.Run(opts.cfgPath, opts.keysPath, opts.modelsPath, opts.stdin, opts.stdout)
+	return tui.Run(opts.cfgPath, opts.stdin, opts.stdout)
 }
