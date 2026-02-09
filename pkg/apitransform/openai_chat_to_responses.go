@@ -12,6 +12,7 @@ import (
 
 const (
 	chatRoleFunction    = "function"
+	chatRoleUser        = "user"
 	chatContentTypeText = "text"
 )
 

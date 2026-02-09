@@ -34,3 +34,39 @@ func TestMapOpenAIChatCompletionsToClaudeMessagesResponse_Basic(t *testing.T) {
 		t.Fatalf("unexpected mapped output: %s", s)
 	}
 }
+
+func TestMapOpenAIChatCompletionsToClaudeMessagesRequest_Basic(t *testing.T) {
+	in := []byte(`{
+  "model":"claude-3-5-sonnet-20240620",
+  "messages":[{"role":"system","content":"be concise"},{"role":"user","content":"hi"}],
+  "max_tokens":128
+}`)
+	out, err := MapOpenAIChatCompletionsToClaudeMessagesRequest(in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s := string(out)
+	if !containsAll(s, `"model":"claude-3-5-sonnet-20240620"`, `"system":"be concise"`, `"messages"`, `"max_tokens":128`) {
+		t.Fatalf("unexpected mapped output: %s", s)
+	}
+}
+
+func TestMapClaudeMessagesResponseToOpenAIChatCompletions_Basic(t *testing.T) {
+	in := []byte(`{
+  "id":"msg_123",
+  "type":"message",
+  "role":"assistant",
+  "model":"claude-3-5-sonnet-20240620",
+  "content":[{"type":"text","text":"hello"}],
+  "stop_reason":"end_turn",
+  "usage":{"input_tokens":3,"output_tokens":4}
+}`)
+	out, err := MapClaudeMessagesResponseToOpenAIChatCompletions(in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s := string(out)
+	if !containsAll(s, `"object":"chat.completion"`, `"model":"claude-3-5-sonnet-20240620"`, `"content":"hello"`, `"total_tokens":7`) {
+		t.Fatalf("unexpected mapped output: %s", s)
+	}
+}

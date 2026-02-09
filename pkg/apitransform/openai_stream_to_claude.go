@@ -113,7 +113,7 @@ func MapOpenAIChatCompletionsChunkToClaudeEventsObject(root apitypes.JSONObject)
 func mapOpenAIFinishToClaudeStop(finish string) string {
 	switch strings.TrimSpace(finish) {
 	case "length":
-		return "max_tokens"
+		return claudeStopReasonMax
 	case "tool_calls":
 		return "tool_use"
 	case "content_filter":

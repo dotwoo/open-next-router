@@ -39,7 +39,7 @@ func TestMapOpenAIChatCompletionsToResponsesRequest_BasicText(t *testing.T) {
 		t.Fatalf("unexpected input len: %d", len(input))
 	}
 	user := mustAnyMap(t, input[0])
-	if user["role"] != "user" || user["content"] != "Hi" {
+	if user["role"] != chatRoleUser || user["content"] != "Hi" {
 		t.Fatalf("unexpected first input item: %#v", user)
 	}
 }

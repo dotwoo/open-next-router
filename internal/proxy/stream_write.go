@@ -38,8 +38,10 @@ func streamToDownstream(
 	mode := strings.ToLower(strings.TrimSpace(respDir.Mode))
 	useStrategyTransform := strings.TrimSpace(respDir.Op) == "sse_parse" &&
 		(mode == "openai_responses_to_openai_chat_chunks" ||
+			mode == "anthropic_to_openai_chunks" ||
 			mode == "openai_to_anthropic_chunks" ||
-			mode == "openai_to_gemini_chunks")
+			mode == "openai_to_gemini_chunks" ||
+			mode == "gemini_to_openai_chat_chunks")
 
 	var upstreamDump *limitedBuffer
 	var proxyDump *limitedBuffer
@@ -173,10 +175,14 @@ func runSSEStrategyTransform(mode, rawMode string, src io.Reader, dst io.Writer)
 	switch mode {
 	case "openai_responses_to_openai_chat_chunks":
 		return apitransform.TransformOpenAIResponsesSSEToChatCompletionsSSE(src, dst)
+	case "anthropic_to_openai_chunks":
+		return apitransform.TransformClaudeMessagesSSEToOpenAIChatCompletionsSSE(src, dst)
 	case "openai_to_anthropic_chunks":
 		return apitransform.TransformOpenAIChatCompletionsSSEToClaudeMessagesSSE(src, dst)
 	case "openai_to_gemini_chunks":
 		return apitransform.TransformOpenAIChatCompletionsSSEToGeminiSSE(src, dst)
+	case "gemini_to_openai_chat_chunks":
+		return apitransform.TransformGeminiSSEToOpenAIChatCompletionsSSE(src, dst)
 	default:
 		return fmt.Errorf("unsupported sse_parse mode %q", rawMode)
 	}

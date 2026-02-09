@@ -259,6 +259,8 @@ v0.1 includes:
 - `openai_chat_to_openai_responses`: OpenAI-compatible `chat.completions` request JSON → OpenAI `/responses` request JSON
 - `anthropic_to_openai_chat`: Anthropic `/v1/messages` request JSON → OpenAI `chat.completions` request JSON
 - `gemini_to_openai_chat`: Gemini `generateContent` request JSON → OpenAI `chat.completions` request JSON
+- `openai_chat_to_gemini_generate_content`: OpenAI `chat.completions` request JSON → Gemini `generateContent` request JSON
+- `openai_chat_to_anthropic_messages`: OpenAI `chat.completions` request JSON → Anthropic `/v1/messages` request JSON
 
 ### 5.4 upstream
 
@@ -336,7 +338,9 @@ Available modes depend on the built-in implementation. v0.1 includes:
 - `openai_to_anthropic_messages` (`resp_map`): OpenAI-compatible `chat.completions` JSON → Anthropic `/v1/messages` JSON
 - `openai_to_anthropic_chunks` (`sse_parse`): OpenAI-compatible `chat.completions` SSE → Anthropic `/v1/messages` SSE
 - `openai_to_gemini_chat` / `openai_to_gemini_generate_content` (`resp_map`): OpenAI-compatible `chat.completions` JSON → Gemini `generateContent` JSON
+- `gemini_to_openai_chat` (`resp_map`): Gemini `generateContent` JSON → OpenAI `chat.completions` JSON
 - `openai_to_gemini_chunks` (`sse_parse`): OpenAI-compatible `chat.completions` SSE → Gemini SSE
+- `gemini_to_openai_chat_chunks` (`sse_parse`): Gemini SSE → OpenAI `chat.completions` SSE chunks
 - `openai_responses_to_openai_chat` (`resp_map`): OpenAI/Azure `/responses` JSON → OpenAI `chat.completions` JSON
 - `openai_responses_to_openai_chat_chunks` (`sse_parse`): OpenAI/Azure `/responses` SSE → OpenAI `chat.completions` SSE chunks
 

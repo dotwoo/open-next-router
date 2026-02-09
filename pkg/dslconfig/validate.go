@@ -169,6 +169,10 @@ func validateRequestTransform(path, providerName, scope string, t RequestTransfo
 	switch mode {
 	case "openai_chat_to_openai_responses":
 		return nil
+	case "openai_chat_to_anthropic_messages":
+		return nil
+	case "openai_chat_to_gemini_generate_content":
+		return nil
 	case "anthropic_to_openai_chat":
 		return nil
 	case "gemini_to_openai_chat":

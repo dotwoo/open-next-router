@@ -207,6 +207,9 @@ func mapNonStreamResponse(respBody []byte, resp *http.Response, respDir dslconfi
 	if strings.TrimSpace(respDir.Op) != "resp_map" {
 		return respOutBody, outCT, didTransform, nil
 	}
+	if resp != nil && resp.StatusCode >= http.StatusBadRequest {
+		return respOutBody, outCT, didTransform, nil
+	}
 
 	decoded, err := maybeDecodeUpstreamBody(respBody, resp.Header.Get("Content-Encoding"))
 	if err != nil {
@@ -219,6 +222,18 @@ func mapNonStreamResponse(respBody []byte, resp *http.Response, respDir dslconfi
 	switch strings.ToLower(strings.TrimSpace(respDir.Mode)) {
 	case "openai_responses_to_openai_chat":
 		respOutBody, err = apitransform.MapOpenAIResponsesToChatCompletions(srcBody)
+		if err != nil {
+			return nil, "", false, err
+		}
+		return respOutBody, contentTypeJSON, true, nil
+	case "anthropic_to_openai_chat":
+		respOutBody, err = apitransform.MapClaudeMessagesResponseToOpenAIChatCompletions(srcBody)
+		if err != nil {
+			return nil, "", false, err
+		}
+		return respOutBody, contentTypeJSON, true, nil
+	case "gemini_to_openai_chat":
+		respOutBody, err = apitransform.MapGeminiGenerateContentToOpenAIChatCompletionsResponse(srcBody)
 		if err != nil {
 			return nil, "", false, err
 		}
@@ -598,6 +613,10 @@ func applyReqMap(gc *gin.Context, t dslconfig.RequestTransform, hasT bool, reqBo
 	switch strings.ToLower(strings.TrimSpace(t.ReqMapMode)) {
 	case "openai_chat_to_openai_responses":
 		return apitransform.MapOpenAIChatCompletionsToResponsesRequest(reqBody)
+	case "openai_chat_to_anthropic_messages":
+		return apitransform.MapOpenAIChatCompletionsToClaudeMessagesRequest(reqBody)
+	case "openai_chat_to_gemini_generate_content":
+		return apitransform.MapOpenAIChatCompletionsToGeminiGenerateContentRequest(reqBody)
 	case "anthropic_to_openai_chat":
 		return apitransform.MapClaudeMessagesToOpenAIChatCompletions(reqBody)
 	case "gemini_to_openai_chat":
