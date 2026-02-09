@@ -19,6 +19,7 @@ import (
 	xproxy "golang.org/x/net/proxy"
 
 	"github.com/r9s-ai/open-next-router/internal/auth"
+	"github.com/r9s-ai/open-next-router/pkg/apitransform"
 	"github.com/r9s-ai/open-next-router/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/pkg/dslmeta"
 	"github.com/r9s-ai/open-next-router/pkg/trafficdump"
@@ -214,7 +215,7 @@ func mapNonStreamResponse(respBody []byte, resp *http.Response, respDir dslconfi
 	if decoded != nil {
 		srcBody = decoded
 	}
-	respOutBody, err = dslconfig.MapOpenAIResponsesToChatCompletions(srcBody)
+	respOutBody, err = apitransform.MapOpenAIResponsesToChatCompletions(srcBody)
 	if err != nil {
 		return nil, "", false, err
 	}
@@ -573,7 +574,7 @@ func applyReqMap(gc *gin.Context, t dslconfig.RequestTransform, hasT bool, reqBo
 	}
 	switch strings.ToLower(strings.TrimSpace(t.ReqMapMode)) {
 	case "openai_chat_to_openai_responses":
-		return dslconfig.MapOpenAIChatCompletionsToResponsesRequest(reqBody)
+		return apitransform.MapOpenAIChatCompletionsToResponsesRequest(reqBody)
 	default:
 		return nil, fmt.Errorf("unsupported req_map mode %q", t.ReqMapMode)
 	}

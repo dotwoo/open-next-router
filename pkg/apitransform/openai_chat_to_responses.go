@@ -1,10 +1,12 @@
-package dslconfig
+package apitransform
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 const (
@@ -29,11 +31,11 @@ func MapOpenAIChatCompletionsToResponsesRequest(reqBody []byte) ([]byte, error) 
 		return reqBody, nil
 	}
 
-	model := strings.TrimSpace(coerceString(root["model"]))
+	model := strings.TrimSpace(jsonutil.CoerceString(root["model"]))
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	if n := coerceInt(root["n"]); n > 1 {
+	if n := jsonutil.CoerceInt(root["n"]); n > 1 {
 		return nil, fmt.Errorf("n>1 is not supported in responses compatibility mode")
 	}
 
@@ -78,7 +80,7 @@ func mapChatMessagesToResponsesInput(messagesAny any) (inputItems []map[string]a
 		if msg == nil {
 			continue
 		}
-		role := strings.TrimSpace(coerceString(msg["role"]))
+		role := strings.TrimSpace(jsonutil.CoerceString(msg["role"]))
 		if role == "" {
 			continue
 		}
@@ -103,9 +105,9 @@ func appendToolOutputAsResponsesItem(dst *[]map[string]any, msg map[string]any) 
 	if dst == nil || msg == nil {
 		return
 	}
-	callID := strings.TrimSpace(coerceString(msg["tool_call_id"]))
+	callID := strings.TrimSpace(jsonutil.CoerceString(msg["tool_call_id"]))
 	if callID == "" {
-		callID = strings.TrimSpace(coerceString(msg["tool_callid"]))
+		callID = strings.TrimSpace(jsonutil.CoerceString(msg["tool_callid"]))
 	}
 	output := coerceChatContentToOutputValue(msg["content"])
 	if callID == "" {
@@ -157,12 +159,12 @@ func mapChatContentPartsToResponses(parts []any) []map[string]any {
 		if pm == nil {
 			continue
 		}
-		pt := strings.TrimSpace(coerceString(pm["type"]))
+		pt := strings.TrimSpace(jsonutil.CoerceString(pm["type"]))
 		switch pt {
 		case chatContentTypeText:
 			out = append(out, map[string]any{
 				"type": "input_text",
-				"text": coerceString(pm["text"]),
+				"text": jsonutil.CoerceString(pm["text"]),
 			})
 		case "image_url":
 			out = append(out, map[string]any{
@@ -207,12 +209,12 @@ func copyChatRequestTopLevelToResponses(in map[string]any, out map[string]any) {
 	if v, ok := in["top_p"].(float64); ok && v != 0 {
 		out["top_p"] = v
 	}
-	if s := strings.TrimSpace(coerceString(in["user"])); s != "" {
+	if s := strings.TrimSpace(jsonutil.CoerceString(in["user"])); s != "" {
 		out["user"] = s
 	}
 
-	maxOutput := coerceInt(in["max_tokens"])
-	if v := coerceInt(in["max_completion_tokens"]); v > maxOutput {
+	maxOutput := jsonutil.CoerceInt(in["max_tokens"])
+	if v := jsonutil.CoerceInt(in["max_completion_tokens"]); v > maxOutput {
 		maxOutput = v
 	}
 	if maxOutput > 0 {
@@ -244,7 +246,7 @@ func copyChatRequestTopLevelToResponses(in map[string]any, out map[string]any) {
 		out["metadata"] = md
 	}
 
-	if s := strings.TrimSpace(coerceString(in["reasoning_effort"])); s != "" && s != "none" {
+	if s := strings.TrimSpace(jsonutil.CoerceString(in["reasoning_effort"])); s != "" && s != "none" {
 		out["reasoning"] = map[string]any{"effort": s}
 	}
 }
@@ -254,7 +256,7 @@ func normalizeChatImageURLToString(v any) any {
 	case string:
 		return vv
 	case map[string]any:
-		if url := strings.TrimSpace(coerceString(vv["url"])); url != "" {
+		if url := strings.TrimSpace(jsonutil.CoerceString(vv["url"])); url != "" {
 			return url
 		}
 		return v
@@ -280,10 +282,10 @@ func extractChatTextFromContent(content any) string {
 		if pm == nil {
 			continue
 		}
-		if strings.TrimSpace(coerceString(pm["type"])) != "text" {
+		if strings.TrimSpace(jsonutil.CoerceString(pm["type"])) != "text" {
 			continue
 		}
-		t := coerceString(pm["text"])
+		t := jsonutil.CoerceString(pm["text"])
 		if strings.TrimSpace(t) == "" {
 			continue
 		}
@@ -322,11 +324,11 @@ func appendAssistantToolCallsAsInputItems(dst *[]map[string]any, msg map[string]
 		if m == nil {
 			continue
 		}
-		id := strings.TrimSpace(coerceString(m["id"]))
+		id := strings.TrimSpace(jsonutil.CoerceString(m["id"]))
 		if id == "" {
 			continue
 		}
-		typ := strings.TrimSpace(coerceString(m["type"]))
+		typ := strings.TrimSpace(jsonutil.CoerceString(m["type"]))
 		if typ != "" && typ != chatRoleFunction {
 			continue
 		}
@@ -334,11 +336,11 @@ func appendAssistantToolCallsAsInputItems(dst *[]map[string]any, msg map[string]
 		if fn == nil {
 			continue
 		}
-		name := strings.TrimSpace(coerceString(fn["name"]))
+		name := strings.TrimSpace(jsonutil.CoerceString(fn["name"]))
 		if name == "" {
 			continue
 		}
-		args := coerceString(fn["arguments"])
+		args := jsonutil.CoerceString(fn["arguments"])
 		*dst = append(*dst, map[string]any{
 			"type":      "function_call",
 			"call_id":   id,
@@ -355,7 +357,7 @@ func mapChatToolsToResponsesTools(tools []any) []any {
 		if m == nil {
 			continue
 		}
-		typ := strings.TrimSpace(coerceString(m["type"]))
+		typ := strings.TrimSpace(jsonutil.CoerceString(m["type"]))
 		switch typ {
 		case chatRoleFunction:
 			fn, _ := m["function"].(map[string]any)
@@ -364,7 +366,7 @@ func mapChatToolsToResponsesTools(tools []any) []any {
 			}
 			out = append(out, map[string]any{
 				"type":        "function",
-				"name":        coerceString(fn["name"]),
+				"name":        jsonutil.CoerceString(fn["name"]),
 				"description": fn["description"],
 				"parameters":  fn["parameters"],
 			})
@@ -381,15 +383,15 @@ func mapChatToolChoiceToResponses(v any) any {
 	case string:
 		return t
 	case map[string]any:
-		typ := strings.TrimSpace(coerceString(t["type"]))
+		typ := strings.TrimSpace(jsonutil.CoerceString(t["type"]))
 		if typ == chatRoleFunction {
 			// Chat: {"type":"function","function":{"name":"..."}}
 			// Responses: {"type":"function","name":"..."}
-			if name := strings.TrimSpace(coerceString(t["name"])); name != "" {
+			if name := strings.TrimSpace(jsonutil.CoerceString(t["name"])); name != "" {
 				return map[string]any{"type": chatRoleFunction, "name": name}
 			}
 			if fn, ok := t["function"].(map[string]any); ok && fn != nil {
-				if name := strings.TrimSpace(coerceString(fn["name"])); name != "" {
+				if name := strings.TrimSpace(jsonutil.CoerceString(fn["name"])); name != "" {
 					return map[string]any{"type": chatRoleFunction, "name": name}
 				}
 			}

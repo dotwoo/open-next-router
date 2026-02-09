@@ -1,4 +1,4 @@
-package dslconfig
+package apitransform
 
 import (
 	"bufio"
@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 const (
@@ -160,7 +162,7 @@ func (s *responsesSSEToChatState) resolveEventName(eventLine string, root map[st
 	if strings.TrimSpace(eventLine) != "" {
 		return strings.TrimSpace(eventLine)
 	}
-	return strings.TrimSpace(coerceString(root["type"]))
+	return strings.TrimSpace(jsonutil.CoerceString(root["type"]))
 }
 
 func (s *responsesSSEToChatState) updateCommonFields(eventName string, root map[string]any) {
@@ -176,13 +178,13 @@ func (s *responsesSSEToChatState) updateCommonFields(eventName string, root map[
 		s.toolCallCanonicalIDByItemID = map[string]string{}
 	}
 
-	if rid := strings.TrimSpace(coerceString(root["response_id"])); rid != "" {
+	if rid := strings.TrimSpace(jsonutil.CoerceString(root["response_id"])); rid != "" {
 		s.ensureChatID(rid)
 	}
-	if rid := strings.TrimSpace(coerceString(root["id"])); rid != "" && strings.HasPrefix(strings.ToLower(strings.TrimSpace(eventName)), "response.") {
+	if rid := strings.TrimSpace(jsonutil.CoerceString(root["id"])); rid != "" && strings.HasPrefix(strings.ToLower(strings.TrimSpace(eventName)), "response.") {
 		s.ensureChatID(rid)
 	}
-	if m := strings.TrimSpace(coerceString(root["model"])); m != "" {
+	if m := strings.TrimSpace(jsonutil.CoerceString(root["model"])); m != "" {
 		s.model = m
 	}
 	if ca := coerceInt64(root["created_at"]); ca > 0 {
@@ -196,7 +198,7 @@ func (s *responsesSSEToChatState) handleTypedEvent(eventNameLower string, root m
 		s.handleResponseCreated(root)
 		return true, nil
 	case "response.output_text.delta":
-		if d := strings.TrimSpace(coerceString(root["delta"])); d != "" {
+		if d := strings.TrimSpace(jsonutil.CoerceString(root["delta"])); d != "" {
 			return true, s.sendTextDelta(d)
 		}
 		return true, nil
@@ -218,13 +220,13 @@ func (s *responsesSSEToChatState) handleResponseCreated(root map[string]any) {
 	if resp == nil {
 		return
 	}
-	if m := strings.TrimSpace(coerceString(resp["model"])); m != "" {
+	if m := strings.TrimSpace(jsonutil.CoerceString(resp["model"])); m != "" {
 		s.model = m
 	}
 	if ca := coerceInt64(resp["created_at"]); ca > 0 {
 		s.created = ca
 	}
-	if rid := strings.TrimSpace(coerceString(resp["id"])); rid != "" {
+	if rid := strings.TrimSpace(jsonutil.CoerceString(resp["id"])); rid != "" {
 		s.ensureChatID(rid)
 	}
 }
@@ -234,12 +236,12 @@ func (s *responsesSSEToChatState) handleOutputItemFunctionCall(root map[string]a
 	if item == nil {
 		return nil
 	}
-	if strings.TrimSpace(coerceString(item["type"])) != responsesFunctionCallType {
+	if strings.TrimSpace(jsonutil.CoerceString(item["type"])) != responsesFunctionCallType {
 		return nil
 	}
 
-	itemID := strings.TrimSpace(coerceString(item["id"]))
-	callID := strings.TrimSpace(coerceString(item["call_id"]))
+	itemID := strings.TrimSpace(jsonutil.CoerceString(item["id"]))
+	callID := strings.TrimSpace(jsonutil.CoerceString(item["call_id"]))
 	if callID == "" {
 		callID = itemID
 	}
@@ -247,12 +249,12 @@ func (s *responsesSSEToChatState) handleOutputItemFunctionCall(root map[string]a
 		s.toolCallCanonicalIDByItemID[itemID] = callID
 	}
 
-	name := strings.TrimSpace(coerceString(item["name"]))
+	name := strings.TrimSpace(jsonutil.CoerceString(item["name"]))
 	if name != "" {
 		s.toolCallNameByID[callID] = name
 	}
 
-	newArgs := coerceString(item["arguments"])
+	newArgs := jsonutil.CoerceString(item["arguments"])
 	prevArgs := s.toolCallArgsByID[callID]
 	argsDelta := argsDeltaFromPrefix(prevArgs, newArgs)
 	if newArgs != "" {
@@ -262,7 +264,7 @@ func (s *responsesSSEToChatState) handleOutputItemFunctionCall(root map[string]a
 }
 
 func (s *responsesSSEToChatState) handleFunctionCallArgsDelta(root map[string]any) error {
-	itemID := strings.TrimSpace(coerceString(root["item_id"]))
+	itemID := strings.TrimSpace(jsonutil.CoerceString(root["item_id"]))
 	callID := s.toolCallCanonicalIDByItemID[itemID]
 	if callID == "" {
 		callID = itemID
@@ -270,7 +272,7 @@ func (s *responsesSSEToChatState) handleFunctionCallArgsDelta(root map[string]an
 	if callID == "" {
 		return nil
 	}
-	delta := coerceString(root["delta"])
+	delta := jsonutil.CoerceString(root["delta"])
 	if delta != "" {
 		s.toolCallArgsByID[callID] += delta
 	}
@@ -287,7 +289,7 @@ func (s *responsesSSEToChatState) shouldEmitFinal(eventName string, root map[str
 	if root["response"] != nil {
 		return true
 	}
-	if strings.TrimSpace(coerceString(root["status"])) != "" {
+	if strings.TrimSpace(jsonutil.CoerceString(root["status"])) != "" {
 		return true
 	}
 	return false
@@ -305,8 +307,8 @@ func (s *responsesSSEToChatState) emitFinalFrom(root map[string]any) error {
 		return nil
 	}
 
-	s.ensureChatID(coerceString(mapped["id"]))
-	if m := strings.TrimSpace(coerceString(mapped["model"])); m != "" {
+	s.ensureChatID(jsonutil.CoerceString(mapped["id"]))
+	if m := strings.TrimSpace(jsonutil.CoerceString(mapped["model"])); m != "" {
 		s.model = m
 	}
 	if c := coerceInt64(mapped["created"]); c > 0 {
@@ -349,7 +351,7 @@ func (s *responsesSSEToChatState) finishReasonFromMapped(mapped map[string]any) 
 	finishReason := ""
 	if choices, ok := mapped["choices"].([]any); ok && len(choices) > 0 {
 		if cm, ok := choices[0].(map[string]any); ok && cm != nil {
-			finishReason = strings.TrimSpace(coerceString(cm["finish_reason"]))
+			finishReason = strings.TrimSpace(jsonutil.CoerceString(cm["finish_reason"]))
 		}
 	}
 	if strings.TrimSpace(finishReason) == "" {

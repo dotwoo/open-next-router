@@ -1,10 +1,12 @@
-package dslconfig
+package apitransform
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 const finishReasonLength = "length"
@@ -43,7 +45,7 @@ func mapOpenAIResponsesObjectToChat(root map[string]any) map[string]any {
 		root = inner
 	}
 
-	id := strings.TrimSpace(coerceString(root["id"]))
+	id := strings.TrimSpace(jsonutil.CoerceString(root["id"]))
 	if id == "" {
 		id = "chatcmpl_" + fmt.Sprintf("%d", time.Now().UnixNano())
 	} else if !strings.HasPrefix(id, "chatcmpl_") {
@@ -54,7 +56,7 @@ func mapOpenAIResponsesObjectToChat(root map[string]any) map[string]any {
 	if created <= 0 {
 		created = time.Now().Unix()
 	}
-	model := strings.TrimSpace(coerceString(root["model"]))
+	model := strings.TrimSpace(jsonutil.CoerceString(root["model"]))
 
 	contentText, toolCalls := extractResponsesOutput(root)
 	finishReason := mapResponsesFinishReason(root)
@@ -99,7 +101,7 @@ func mapOpenAIResponsesObjectToChat(root map[string]any) map[string]any {
 
 func extractResponsesOutput(root map[string]any) (text string, toolCalls []any) {
 	// Fast path if server provides a convenience field.
-	if s := strings.TrimSpace(coerceString(root["output_text"])); s != "" {
+	if s := strings.TrimSpace(jsonutil.CoerceString(root["output_text"])); s != "" {
 		text = s
 	}
 
@@ -109,10 +111,10 @@ func extractResponsesOutput(root map[string]any) (text string, toolCalls []any) 
 		if !ok || m == nil {
 			continue
 		}
-		typ := strings.TrimSpace(coerceString(m["type"]))
+		typ := strings.TrimSpace(jsonutil.CoerceString(m["type"]))
 		switch typ {
 		case "message":
-			role := strings.TrimSpace(coerceString(m["role"]))
+			role := strings.TrimSpace(jsonutil.CoerceString(m["role"]))
 			if role != "" && role != "assistant" {
 				continue
 			}
@@ -141,10 +143,10 @@ func extractResponsesMessageText(msg map[string]any) string {
 		if !ok || cm == nil {
 			continue
 		}
-		typ := strings.TrimSpace(coerceString(cm["type"]))
+		typ := strings.TrimSpace(jsonutil.CoerceString(cm["type"]))
 		switch typ {
 		case "output_text", "text":
-			if s := coerceString(cm["text"]); s != "" {
+			if s := jsonutil.CoerceString(cm["text"]); s != "" {
 				b.WriteString(s)
 			}
 		}
@@ -153,14 +155,14 @@ func extractResponsesMessageText(msg map[string]any) string {
 }
 
 func mapResponsesFunctionCallToToolCall(fc map[string]any) map[string]any {
-	name := strings.TrimSpace(coerceString(fc["name"]))
-	args := strings.TrimSpace(coerceString(fc["arguments"]))
+	name := strings.TrimSpace(jsonutil.CoerceString(fc["name"]))
+	args := strings.TrimSpace(jsonutil.CoerceString(fc["arguments"]))
 	if name == "" {
 		return nil
 	}
-	id := strings.TrimSpace(coerceString(fc["call_id"]))
+	id := strings.TrimSpace(jsonutil.CoerceString(fc["call_id"]))
 	if id == "" {
-		id = strings.TrimSpace(coerceString(fc["id"]))
+		id = strings.TrimSpace(jsonutil.CoerceString(fc["id"]))
 	}
 	if id == "" {
 		id = "call_" + fmt.Sprintf("%d", time.Now().UnixNano())
@@ -176,10 +178,10 @@ func mapResponsesFunctionCallToToolCall(fc map[string]any) map[string]any {
 }
 
 func mapResponsesFinishReason(root map[string]any) string {
-	status := strings.ToLower(strings.TrimSpace(coerceString(root["status"])))
+	status := strings.ToLower(strings.TrimSpace(jsonutil.CoerceString(root["status"])))
 	// Best-effort: map incomplete reasons (if present) to chat finish_reason.
 	if inc, ok := root["incomplete_details"].(map[string]any); ok && inc != nil {
-		reason := strings.ToLower(strings.TrimSpace(coerceString(inc["reason"])))
+		reason := strings.ToLower(strings.TrimSpace(jsonutil.CoerceString(inc["reason"])))
 		switch reason {
 		case "max_output_tokens", finishReasonLength:
 			return finishReasonLength
@@ -203,16 +205,16 @@ func mapResponsesUsageToChat(root map[string]any) map[string]any {
 	if u == nil {
 		return nil
 	}
-	inputTokens := firstInt(
-		getIntByPath(u, "$.prompt_tokens"),
-		getIntByPath(u, "$.input_tokens"),
+	inputTokens := jsonutil.FirstInt(
+		jsonutil.GetIntByPath(u, "$.prompt_tokens"),
+		jsonutil.GetIntByPath(u, "$.input_tokens"),
 	)
-	outputTokens := firstInt(
-		getIntByPath(u, "$.completion_tokens"),
-		getIntByPath(u, "$.output_tokens"),
+	outputTokens := jsonutil.FirstInt(
+		jsonutil.GetIntByPath(u, "$.completion_tokens"),
+		jsonutil.GetIntByPath(u, "$.output_tokens"),
 	)
-	totalTokens := firstInt(
-		getIntByPath(u, "$.total_tokens"),
+	totalTokens := jsonutil.FirstInt(
+		jsonutil.GetIntByPath(u, "$.total_tokens"),
 		inputTokens+outputTokens,
 	)
 
@@ -225,10 +227,10 @@ func mapResponsesUsageToChat(root map[string]any) map[string]any {
 		"output_tokens":     outputTokens,
 	}
 	// Pass through cached tokens when present.
-	if v := firstInt(
-		getIntByPath(u, "$.prompt_tokens_details.cached_tokens"),
-		getIntByPath(u, "$.input_tokens_details.cached_tokens"),
-		getIntByPath(u, "$.cached_tokens"),
+	if v := jsonutil.FirstInt(
+		jsonutil.GetIntByPath(u, "$.prompt_tokens_details.cached_tokens"),
+		jsonutil.GetIntByPath(u, "$.input_tokens_details.cached_tokens"),
+		jsonutil.GetIntByPath(u, "$.cached_tokens"),
 	); v > 0 {
 		out["prompt_tokens_details"] = map[string]any{"cached_tokens": v}
 		out["input_tokens_details"] = map[string]any{"cached_tokens": v}

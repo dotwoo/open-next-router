@@ -3,10 +3,10 @@ package dslconfig
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/r9s-ai/open-next-router/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 type UsageExtractConfig struct {
@@ -92,24 +92,24 @@ func ExtractUsage(meta *dslmeta.Meta, cfg UsageExtractConfig, respBody []byte) (
 	var totalTokens *int
 	switch mode {
 	case usageModeOpenAI:
-		inputTokens = firstInt(
-			getIntByPath(root, "$.usage.prompt_tokens"),
-			getIntByPath(root, "$.usage.input_tokens"),
+		inputTokens = jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usage.prompt_tokens"),
+			jsonutil.GetIntByPath(root, "$.usage.input_tokens"),
 		)
-		outputTokens = firstInt(
-			getIntByPath(root, "$.usage.completion_tokens"),
-			getIntByPath(root, "$.usage.output_tokens"),
+		outputTokens = jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usage.completion_tokens"),
+			jsonutil.GetIntByPath(root, "$.usage.output_tokens"),
 		)
-		cachedTokens = firstInt(
-			getIntByPath(root, "$.usage.prompt_tokens_details.cached_tokens"),
-			getIntByPath(root, "$.usage.input_tokens_details.cached_tokens"),
-			getIntByPath(root, "$.usage.cached_tokens"),
+		cachedTokens = jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usage.prompt_tokens_details.cached_tokens"),
+			jsonutil.GetIntByPath(root, "$.usage.input_tokens_details.cached_tokens"),
+			jsonutil.GetIntByPath(root, "$.usage.cached_tokens"),
 		)
 	case usageModeAnthropic:
-		inputTokens = getIntByPath(root, "$.usage.input_tokens")
-		outputTokens = getIntByPath(root, "$.usage.output_tokens")
-		cachedTokens = getIntByPath(root, "$.usage.cache_read_input_tokens")
-		cacheWriteTokens = getIntByPath(root, "$.usage.cache_creation_input_tokens")
+		inputTokens = jsonutil.GetIntByPath(root, "$.usage.input_tokens")
+		outputTokens = jsonutil.GetIntByPath(root, "$.usage.output_tokens")
+		cachedTokens = jsonutil.GetIntByPath(root, "$.usage.cache_read_input_tokens")
+		cacheWriteTokens = jsonutil.GetIntByPath(root, "$.usage.cache_creation_input_tokens")
 	case usageModeGemini:
 		// Gemini native usage fields (new-api alignment):
 		// - usageMetadata.promptTokenCount
@@ -119,22 +119,22 @@ func ExtractUsage(meta *dslmeta.Meta, cfg UsageExtractConfig, respBody []byte) (
 		//
 		// CompletionTokens = candidatesTokenCount + thoughtsTokenCount
 		// TotalTokens uses totalTokenCount if present.
-		inputTokens = firstInt(
-			getIntByPath(root, "$.usageMetadata.promptTokenCount"),
-			getIntByPath(root, "$.usage_metadata.prompt_token_count"),
+		inputTokens = jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usageMetadata.promptTokenCount"),
+			jsonutil.GetIntByPath(root, "$.usage_metadata.prompt_token_count"),
 		)
-		candidatesTokens := firstInt(
-			getIntByPath(root, "$.usageMetadata.candidatesTokenCount"),
-			getIntByPath(root, "$.usage_metadata.candidates_token_count"),
+		candidatesTokens := jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usageMetadata.candidatesTokenCount"),
+			jsonutil.GetIntByPath(root, "$.usage_metadata.candidates_token_count"),
 		)
-		thoughtsTokens := firstInt(
-			getIntByPath(root, "$.usageMetadata.thoughtsTokenCount"),
-			getIntByPath(root, "$.usage_metadata.thoughts_token_count"),
+		thoughtsTokens := jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usageMetadata.thoughtsTokenCount"),
+			jsonutil.GetIntByPath(root, "$.usage_metadata.thoughts_token_count"),
 		)
 		outputTokens = candidatesTokens + thoughtsTokens
-		if v := firstInt(
-			getIntByPath(root, "$.usageMetadata.totalTokenCount"),
-			getIntByPath(root, "$.usage_metadata.total_token_count"),
+		if v := jsonutil.FirstInt(
+			jsonutil.GetIntByPath(root, "$.usageMetadata.totalTokenCount"),
+			jsonutil.GetIntByPath(root, "$.usage_metadata.total_token_count"),
 		); v != 0 {
 			totalTokens = &v
 		}
@@ -175,66 +175,7 @@ func evalUsageField(root map[string]any, expr *UsageExpr, fallbackPath string) i
 	if expr != nil {
 		return expr.Eval(root)
 	}
-	return getIntByPath(root, strings.TrimSpace(fallbackPath))
-}
-
-func firstInt(vals ...int) int {
-	for _, v := range vals {
-		if v != 0 {
-			return v
-		}
-	}
-	return 0
-}
-
-// getIntByPath implements a restricted JSONPath subset:
-// - $.a.b.c
-// - $.items[0].x
-// - $.items[*].x (sum of numeric values)
-func getIntByPath(root map[string]any, path string) int {
-	p := strings.TrimSpace(path)
-	if p == "" {
-		return 0
-	}
-	if !strings.HasPrefix(p, "$.") {
-		return 0
-	}
-	parts := strings.Split(strings.TrimPrefix(p, "$."), ".")
-	vals, ok := collectPathValues(root, parts)
-	if !ok {
-		return 0
-	}
-	sum := 0
-	for _, v := range vals {
-		sum += coerceInt(v)
-	}
-	return sum
-}
-
-func coerceInt(v any) int {
-	switch t := v.(type) {
-	case float64:
-		return int(t)
-	case int:
-		return t
-	case int64:
-		return int(t)
-	case json.Number:
-		if i, err := t.Int64(); err == nil {
-			return int(i)
-		}
-	case string:
-		if i, err := strconv.Atoi(strings.TrimSpace(t)); err == nil {
-			return i
-		}
-	case []any:
-		sum := 0
-		for _, item := range t {
-			sum += coerceInt(item)
-		}
-		return sum
-	}
-	return 0
+	return jsonutil.GetIntByPath(root, strings.TrimSpace(fallbackPath))
 }
 
 func mergeUsageConfig(base UsageExtractConfig, override UsageExtractConfig) UsageExtractConfig {

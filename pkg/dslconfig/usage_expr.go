@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 // UsageExpr is a restricted arithmetic expression used by usage_extract custom.
@@ -40,7 +42,7 @@ func (e *UsageExpr) Eval(root map[string]any) int {
 	case usageExprInt:
 		return e.value
 	case usageExprPath:
-		return getIntByPath(root, e.path)
+		return jsonutil.GetIntByPath(root, e.path)
 	case usageExprAdd:
 		return e.left.Eval(root) + e.right.Eval(root)
 	case usageExprSub:

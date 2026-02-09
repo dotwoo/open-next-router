@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/r9s-ai/open-next-router/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 type FinishReasonExtractConfig struct {
@@ -103,7 +104,7 @@ func ExtractFinishReason(meta *dslmeta.Meta, cfg FinishReasonExtractConfig, resp
 		// - message_start: {"message":{"stop_reason":null,...}}
 		// - message_delta: {"delta":{"stop_reason":"end_turn",...}, "usage":{...}}
 		return strings.TrimSpace(firstNonEmptyString(
-			coerceString(root["stop_reason"]),
+			jsonutil.CoerceString(root["stop_reason"]),
 			getStringByPath(root, "$.delta.stop_reason"),
 			getStringByPath(root, "$.message.stop_reason"),
 		)), nil
@@ -126,7 +127,7 @@ func extractOpenAIFinishReason(root map[string]any) string {
 		if !ok {
 			continue
 		}
-		if v := strings.TrimSpace(coerceString(m["finish_reason"])); v != "" {
+		if v := strings.TrimSpace(jsonutil.CoerceString(m["finish_reason"])); v != "" {
 			return v
 		}
 	}
@@ -144,24 +145,15 @@ func extractGeminiFinishReason(root map[string]any) string {
 		if !ok {
 			continue
 		}
-		if v := strings.TrimSpace(coerceString(m["finishReason"])); v != "" {
+		if v := strings.TrimSpace(jsonutil.CoerceString(m["finishReason"])); v != "" {
 			return v
 		}
 		// snake_case fallback
-		if v := strings.TrimSpace(coerceString(m["finish_reason"])); v != "" {
+		if v := strings.TrimSpace(jsonutil.CoerceString(m["finish_reason"])); v != "" {
 			return v
 		}
 	}
 	return ""
-}
-
-func coerceString(v any) string {
-	switch t := v.(type) {
-	case string:
-		return t
-	default:
-		return ""
-	}
 }
 
 func firstNonEmptyString(vals ...string) string {

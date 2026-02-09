@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/r9s-ai/open-next-router/pkg/apitransform"
 	"github.com/r9s-ai/open-next-router/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/pkg/dslmeta"
 	"github.com/r9s-ai/open-next-router/pkg/trafficdump"
@@ -79,7 +80,7 @@ func streamToDownstream(
 			if closeUp != nil {
 				defer func() { _ = closeUp() }()
 			}
-			err := dslconfig.TransformOpenAIResponsesSSEToChatCompletionsSSE(upSrc, pw)
+			err := apitransform.TransformOpenAIResponsesSSEToChatCompletionsSSE(upSrc, pw)
 			_ = pw.CloseWithError(err)
 		}()
 

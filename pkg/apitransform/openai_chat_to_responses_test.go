@@ -1,9 +1,11 @@
-package dslconfig
+package apitransform
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 func TestMapOpenAIChatCompletionsToResponsesRequest_BasicText(t *testing.T) {
@@ -67,7 +69,7 @@ func TestMapOpenAIChatCompletionsToResponsesRequest_ToolOutput(t *testing.T) {
 	if fco["type"] != "function_call_output" || fco["call_id"] != "call_1" {
 		t.Fatalf("unexpected function_call_output item: %#v", fco)
 	}
-	if strings.TrimSpace(coerceString(fco["output"])) != `{"temp":20}` {
+	if strings.TrimSpace(jsonutil.CoerceString(fco["output"])) != `{"temp":20}` {
 		t.Fatalf("unexpected output: %#v", fco["output"])
 	}
 }

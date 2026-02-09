@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/r9s-ai/open-next-router/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
 // StreamMetricsAggregator aggregates best-effort metrics from SSE "data:" JSON payloads.
@@ -91,16 +92,16 @@ func (a *StreamMetricsAggregator) OnSSEDataJSON(payload []byte) error {
 		if !ok || um == nil {
 			return nil
 		}
-		if v := coerceInt(um["input_tokens"]); v > 0 {
+		if v := jsonutil.CoerceInt(um["input_tokens"]); v > 0 {
 			a.anthropicSnap.InputTokens = v
 		}
-		if v := coerceInt(um["output_tokens"]); v > 0 {
+		if v := jsonutil.CoerceInt(um["output_tokens"]); v > 0 {
 			a.anthropicSnap.OutputTokens = v
 		}
-		if v := coerceInt(um["cache_read_input_tokens"]); v > 0 {
+		if v := jsonutil.CoerceInt(um["cache_read_input_tokens"]); v > 0 {
 			a.anthropicSnap.CacheReadTokens = v
 		}
-		if v := coerceInt(um["cache_creation_input_tokens"]); v > 0 {
+		if v := jsonutil.CoerceInt(um["cache_creation_input_tokens"]); v > 0 {
 			a.anthropicSnap.CacheWriteTokens = v
 		}
 		return nil
