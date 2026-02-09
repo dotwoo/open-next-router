@@ -1,11 +1,11 @@
 package apitransform
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/r9s-ai/open-next-router/pkg/apitypes"
 	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
@@ -17,23 +17,24 @@ const finishReasonLength = "length"
 // This is primarily meant for "legacy client -> /v1/chat/completions" compatibility when the upstream only
 // supports "/v1/responses" (or Azure "/openai/responses").
 func MapOpenAIResponsesToChatCompletions(respBody []byte) ([]byte, error) {
-	var obj any
-	if err := json.Unmarshal(respBody, &obj); err != nil {
-		return nil, fmt.Errorf("parse responses json: %w", err)
+	root, err := apitypes.ParseJSONObject(respBody, "responses")
+	if err != nil {
+		return nil, err
 	}
-	root, _ := obj.(map[string]any)
-	if root == nil {
-		return nil, fmt.Errorf("responses json is not an object")
+	out, err := MapOpenAIResponsesToChatCompletionsObject(root)
+	if err != nil {
+		return nil, err
 	}
+	return out.Marshal()
+}
+
+// MapOpenAIResponsesToChatCompletionsObject maps responses object payload to chat.completions object payload.
+func MapOpenAIResponsesToChatCompletionsObject(root apitypes.JSONObject) (apitypes.JSONObject, error) {
 	outObj := mapOpenAIResponsesObjectToChat(root)
 	if outObj == nil {
 		return nil, fmt.Errorf("responses json is not an object")
 	}
-	b, err := json.Marshal(outObj)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
+	return apitypes.JSONObject(outObj), nil
 }
 
 func mapOpenAIResponsesObjectToChat(root map[string]any) map[string]any {
@@ -185,8 +186,8 @@ func mapResponsesFinishReason(root map[string]any) string {
 		switch reason {
 		case "max_output_tokens", finishReasonLength:
 			return finishReasonLength
-		case "content_filter":
-			return "content_filter"
+		case finishContentFilter:
+			return finishContentFilter
 		}
 	}
 	switch status {

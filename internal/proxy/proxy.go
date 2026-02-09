@@ -29,6 +29,7 @@ import (
 const (
 	contentEncodingIdentity = "identity"
 	contentEncodingGzip     = "gzip"
+	contentTypeJSON         = "application/json"
 )
 
 type ProviderKey struct {
@@ -203,7 +204,7 @@ func mapNonStreamResponse(respBody []byte, resp *http.Response, respDir dslconfi
 	}
 	didTransform := false
 
-	if strings.TrimSpace(respDir.Op) != "resp_map" || !strings.EqualFold(strings.TrimSpace(respDir.Mode), "openai_responses_to_openai_chat") {
+	if strings.TrimSpace(respDir.Op) != "resp_map" {
 		return respOutBody, outCT, didTransform, nil
 	}
 
@@ -215,11 +216,28 @@ func mapNonStreamResponse(respBody []byte, resp *http.Response, respDir dslconfi
 	if decoded != nil {
 		srcBody = decoded
 	}
-	respOutBody, err = apitransform.MapOpenAIResponsesToChatCompletions(srcBody)
-	if err != nil {
-		return nil, "", false, err
+	switch strings.ToLower(strings.TrimSpace(respDir.Mode)) {
+	case "openai_responses_to_openai_chat":
+		respOutBody, err = apitransform.MapOpenAIResponsesToChatCompletions(srcBody)
+		if err != nil {
+			return nil, "", false, err
+		}
+		return respOutBody, contentTypeJSON, true, nil
+	case "openai_to_anthropic_messages":
+		respOutBody, err = apitransform.MapOpenAIChatCompletionsToClaudeMessagesResponse(srcBody)
+		if err != nil {
+			return nil, "", false, err
+		}
+		return respOutBody, contentTypeJSON, true, nil
+	case "openai_to_gemini_chat", "openai_to_gemini_generate_content":
+		respOutBody, err = apitransform.MapOpenAIChatCompletionsToGeminiGenerateContentResponse(srcBody)
+		if err != nil {
+			return nil, "", false, err
+		}
+		return respOutBody, contentTypeJSON, true, nil
+	default:
+		return respOutBody, outCT, didTransform, nil
 	}
-	return respOutBody, "application/json", true, nil
 }
 
 func estimateNonStreamUsage(
@@ -575,6 +593,10 @@ func applyReqMap(gc *gin.Context, t dslconfig.RequestTransform, hasT bool, reqBo
 	switch strings.ToLower(strings.TrimSpace(t.ReqMapMode)) {
 	case "openai_chat_to_openai_responses":
 		return apitransform.MapOpenAIChatCompletionsToResponsesRequest(reqBody)
+	case "anthropic_to_openai_chat":
+		return apitransform.MapClaudeMessagesToOpenAIChatCompletions(reqBody)
+	case "gemini_to_openai_chat":
+		return apitransform.MapGeminiGenerateContentToOpenAIChatCompletions(reqBody)
 	default:
 		return nil, fmt.Errorf("unsupported req_map mode %q", t.ReqMapMode)
 	}

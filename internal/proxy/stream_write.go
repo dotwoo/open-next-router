@@ -35,9 +35,12 @@ func streamToDownstream(
 	dump *streamDumpState,
 ) (int64, error) {
 	needSSEOps := len(respDir.JSONOps) > 0 || len(respDir.SSEJSONDelIf) > 0
-	useStrategyTransform := strings.TrimSpace(respDir.Op) == "sse_parse" && strings.EqualFold(strings.TrimSpace(respDir.Mode), "openai_responses_to_openai_chat_chunks")
+	mode := strings.ToLower(strings.TrimSpace(respDir.Mode))
+	useStrategyTransform := strings.TrimSpace(respDir.Op) == "sse_parse" &&
+		(mode == "openai_responses_to_openai_chat_chunks" ||
+			mode == "openai_to_anthropic_chunks" ||
+			mode == "openai_to_gemini_chunks")
 
-	var src io.Reader = resp.Body
 	var upstreamDump *limitedBuffer
 	var proxyDump *limitedBuffer
 
@@ -47,63 +50,9 @@ func streamToDownstream(
 		proxyDump = &limitedBuffer{limit: rec.MaxBytes()}
 	}
 
-	if useStrategyTransform {
-		pr, pw := io.Pipe()
-
-		// Build upstream source for the strategy transform (decode gzip when needed).
-		var upSrc io.Reader = resp.Body
-		var closeUp func() error
-		ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-		if ce == contentEncodingGzip {
-			gr, err := gzip.NewReader(resp.Body)
-			if err != nil {
-				return 0, err
-			}
-			upSrc = gr
-			closeUp = gr.Close
-			// Ensure downstream doesn't see upstream encoding.
-			gc.Writer.Header().Del("Content-Encoding")
-		} else if ce != "" && ce != contentEncodingIdentity {
-			return 0, fmt.Errorf("cannot transform encoded upstream response (Content-Encoding=%q)", resp.Header.Get("Content-Encoding"))
-		}
-
-		if upstreamDump != nil {
-			upSrc = io.TeeReader(upSrc, upstreamDump)
-		}
-
-		// Override to downstream chat SSE.
-		gc.Writer.Header().Set("Content-Type", "text/event-stream")
-		gc.Writer.Header().Set("Cache-Control", "no-cache")
-		gc.Status(resp.StatusCode)
-
-		go func() {
-			if closeUp != nil {
-				defer func() { _ = closeUp() }()
-			}
-			err := apitransform.TransformOpenAIResponsesSSEToChatCompletionsSSE(upSrc, pw)
-			_ = pw.CloseWithError(err)
-		}()
-
-		src = pr
-	} else {
-		// passthrough
-		gc.Status(resp.StatusCode)
-
-		// If we need to parse/modify SSE, we must operate on decoded text.
-		ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-		if needSSEOps {
-			if ce == contentEncodingGzip {
-				gr, err := gzip.NewReader(resp.Body)
-				if err != nil {
-					return 0, err
-				}
-				defer func() { _ = gr.Close() }()
-				src = gr
-				gc.Writer.Header().Del("Content-Encoding")
-			} else if ce != "" && ce != contentEncodingIdentity {
-				return 0, fmt.Errorf("cannot transform encoded upstream response (Content-Encoding=%q)", resp.Header.Get("Content-Encoding"))
-			}
-		}
+	src, err := buildStreamSource(gc, resp, mode, respDir.Mode, needSSEOps, useStrategyTransform, upstreamDump)
+	if err != nil {
+		return 0, err
 	}
 
 	if upstreamDump != nil && !useStrategyTransform {
@@ -125,7 +74,6 @@ func streamToDownstream(
 	}
 	isSSE := strings.Contains(ctLower, "text/event-stream")
 
-	var err error
 	if needSSEOps && isSSE {
 		err = dslconfig.TransformSSEEventDataJSON(src, cw, meta, respDir.SSEJSONDelIf, respDir.JSONOps)
 	} else {
@@ -138,6 +86,114 @@ func streamToDownstream(
 	}
 
 	return cw.n, err
+}
+
+func buildStreamSource(
+	gc *gin.Context,
+	resp *http.Response,
+	mode string,
+	rawMode string,
+	needSSEOps bool,
+	useStrategyTransform bool,
+	upstreamDump *limitedBuffer,
+) (io.Reader, error) {
+	if useStrategyTransform {
+		return buildStrategyTransformSource(gc, resp, mode, rawMode, upstreamDump)
+	}
+	return buildPassthroughSource(gc, resp, needSSEOps)
+}
+
+func buildStrategyTransformSource(
+	gc *gin.Context,
+	resp *http.Response,
+	mode string,
+	rawMode string,
+	upstreamDump *limitedBuffer,
+) (io.Reader, error) {
+	pr, pw := io.Pipe()
+	upSrc, closeUp, err := decodeUpstreamIfNeeded(resp, true)
+	if err != nil {
+		return nil, err
+	}
+	if closeUp != nil {
+		defer func() { _ = closeUp() }()
+	}
+	if upstreamDump != nil {
+		upSrc = io.TeeReader(upSrc, upstreamDump)
+	}
+
+	gc.Writer.Header().Set("Content-Type", "text/event-stream")
+	gc.Writer.Header().Set("Cache-Control", "no-cache")
+	gc.Status(resp.StatusCode)
+
+	go func() {
+		err := runSSEStrategyTransform(mode, rawMode, upSrc, pw)
+		_ = pw.CloseWithError(err)
+	}()
+	return pr, nil
+}
+
+func buildPassthroughSource(gc *gin.Context, resp *http.Response, needSSEOps bool) (io.Reader, error) {
+	gc.Status(resp.StatusCode)
+	if !needSSEOps {
+		return resp.Body, nil
+	}
+	src, closeUp, err := decodeUpstreamIfNeeded(resp, false)
+	if err != nil {
+		return nil, err
+	}
+	if closeUp != nil {
+		// passthrough branch uses returned reader directly; caller lifecycle is stream-lifetime.
+		// keep close bound to body close by wrapping reader.
+		src = &readCloserReader{Reader: src, closeFn: closeUp}
+	}
+	return src, nil
+}
+
+func decodeUpstreamIfNeeded(resp *http.Response, forceDecode bool) (io.Reader, func() error, error) {
+	ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	if ce == contentEncodingGzip {
+		gr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, nil, err
+		}
+		resp.Header.Del("Content-Encoding")
+		return gr, gr.Close, nil
+	}
+	if ce != "" && ce != contentEncodingIdentity && forceDecode {
+		return nil, nil, fmt.Errorf("cannot transform encoded upstream response (Content-Encoding=%q)", resp.Header.Get("Content-Encoding"))
+	}
+	if ce != "" && ce != contentEncodingIdentity && !forceDecode {
+		return nil, nil, fmt.Errorf("cannot transform encoded upstream response (Content-Encoding=%q)", resp.Header.Get("Content-Encoding"))
+	}
+	return resp.Body, nil, nil
+}
+
+func runSSEStrategyTransform(mode, rawMode string, src io.Reader, dst io.Writer) error {
+	switch mode {
+	case "openai_responses_to_openai_chat_chunks":
+		return apitransform.TransformOpenAIResponsesSSEToChatCompletionsSSE(src, dst)
+	case "openai_to_anthropic_chunks":
+		return apitransform.TransformOpenAIChatCompletionsSSEToClaudeMessagesSSE(src, dst)
+	case "openai_to_gemini_chunks":
+		return apitransform.TransformOpenAIChatCompletionsSSEToGeminiSSE(src, dst)
+	default:
+		return fmt.Errorf("unsupported sse_parse mode %q", rawMode)
+	}
+}
+
+type readCloserReader struct {
+	io.Reader
+	closeFn func() error
+}
+
+func (r *readCloserReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err == io.EOF && r.closeFn != nil {
+		_ = r.closeFn()
+		r.closeFn = nil
+	}
+	return n, err
 }
 
 // streamTransformedOpenAIResponses and streamPassthrough were merged into streamToDownstream

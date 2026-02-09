@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/r9s-ai/open-next-router/pkg/apitypes"
 	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
@@ -154,12 +155,12 @@ func TestMapOpenAIChatCompletionsToResponsesRequest_ToolChoiceAndTools(t *testin
 	}
 	m := mustUnmarshalObj(t, out)
 	tc := mustAnyMap(t, m["tool_choice"])
-	if tc["type"] != "function" || tc["name"] != "get_weather" {
+	if tc["type"] != chatRoleFunction || tc["name"] != "get_weather" {
 		t.Fatalf("unexpected tool_choice: %#v", tc)
 	}
 	tools := mustAnySlice(t, m["tools"])
 	t0 := mustAnyMap(t, tools[0])
-	if t0["type"] != "function" || t0["name"] != "get_weather" {
+	if t0["type"] != chatRoleFunction || t0["name"] != "get_weather" {
 		t.Fatalf("unexpected tools[0]: %#v", t0)
 	}
 	if m["parallel_tool_calls"] != true {
@@ -203,6 +204,33 @@ func TestMapOpenAIChatCompletionsToResponsesRequest_ResponseFormatAndReasoning(t
 	reasoning := mustAnyMap(t, m["reasoning"])
 	if reasoning["effort"] != "low" {
 		t.Fatalf("unexpected reasoning: %#v", reasoning)
+	}
+}
+
+func TestMapOpenAIChatCompletionsToResponsesObject_Basic(t *testing.T) {
+	out, err := MapOpenAIChatCompletionsToResponsesObject(apitypes.JSONObject{
+		"model": "gpt-4o-mini",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hi"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["model"] != "gpt-4o-mini" {
+		t.Fatalf("unexpected model: %#v", out["model"])
+	}
+	switch input := out["input"].(type) {
+	case []map[string]any:
+		if len(input) != 1 {
+			t.Fatalf("unexpected input len: %d", len(input))
+		}
+	case []any:
+		if len(input) != 1 {
+			t.Fatalf("unexpected input len: %d", len(input))
+		}
+	default:
+		t.Fatalf("unexpected input type: %T", out["input"])
 	}
 }
 

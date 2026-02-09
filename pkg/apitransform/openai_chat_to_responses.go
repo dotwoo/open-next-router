@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/r9s-ai/open-next-router/pkg/apitypes"
 	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
 )
 
@@ -21,7 +22,7 @@ const (
 // - This function only transforms the JSON payload; it does not alter headers or URL.
 // - It is intentionally permissive and keeps unknown fields out (to avoid surprising upstream behavior).
 func MapOpenAIChatCompletionsToResponsesRequest(reqBody []byte) ([]byte, error) {
-	root, err := parseJSONRootObject(reqBody, "chat request")
+	root, err := apitypes.ParseJSONObject(reqBody, "chat request")
 	if err != nil {
 		return nil, err
 	}
@@ -31,6 +32,15 @@ func MapOpenAIChatCompletionsToResponsesRequest(reqBody []byte) ([]byte, error) 
 		return reqBody, nil
 	}
 
+	out, err := MapOpenAIChatCompletionsToResponsesObject(root)
+	if err != nil {
+		return nil, err
+	}
+	return out.Marshal()
+}
+
+// MapOpenAIChatCompletionsToResponsesObject converts chat object payload to responses object payload.
+func MapOpenAIChatCompletionsToResponsesObject(root apitypes.JSONObject) (apitypes.JSONObject, error) {
 	model := strings.TrimSpace(jsonutil.CoerceString(root["model"]))
 	if model == "" {
 		return nil, errors.New("model is required")
@@ -41,7 +51,7 @@ func MapOpenAIChatCompletionsToResponsesRequest(reqBody []byte) ([]byte, error) 
 
 	inputItems, instructions := mapChatMessagesToResponsesInput(root["messages"])
 
-	out := map[string]any{
+	out := apitypes.JSONObject{
 		"model": model,
 		"input": inputItems,
 	}
@@ -50,24 +60,7 @@ func MapOpenAIChatCompletionsToResponsesRequest(reqBody []byte) ([]byte, error) 
 	}
 
 	copyChatRequestTopLevelToResponses(root, out)
-
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
-func parseJSONRootObject(b []byte, what string) (map[string]any, error) {
-	var obj any
-	if err := json.Unmarshal(b, &obj); err != nil {
-		return nil, fmt.Errorf("parse %s json: %w", strings.TrimSpace(what), err)
-	}
-	root, _ := obj.(map[string]any)
-	if root == nil {
-		return nil, fmt.Errorf("%s json is not an object", strings.TrimSpace(what))
-	}
-	return root, nil
+	return out, nil
 }
 
 func mapChatMessagesToResponsesInput(messagesAny any) (inputItems []map[string]any, instructions string) {

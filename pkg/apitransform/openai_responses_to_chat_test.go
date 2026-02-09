@@ -1,6 +1,10 @@
 package apitransform
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/r9s-ai/open-next-router/pkg/apitypes"
+)
 
 func TestMapOpenAIResponsesToChatCompletions_Basic(t *testing.T) {
 	in := []byte(`{
@@ -66,6 +70,27 @@ func TestMapOpenAIResponsesToChatCompletions_OnlyToolCallFinishReason(t *testing
 	s := string(out)
 	if !containsAll(s, `"finish_reason":"tool_calls"`, `"tool_calls"`) {
 		t.Fatalf("expected tool_calls finish_reason: %s", s)
+	}
+}
+
+func TestMapOpenAIResponsesToChatCompletionsObject_Basic(t *testing.T) {
+	out, err := MapOpenAIResponsesToChatCompletionsObject(apitypes.JSONObject{
+		"id":         "resp_1",
+		"created_at": 1700000000,
+		"model":      "gpt-4o-mini",
+		"status":     "completed",
+		"output": []any{
+			map[string]any{
+				"type": "message", "role": "assistant",
+				"content": []any{map[string]any{"type": "output_text", "text": "hello"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["object"] != "chat.completion" {
+		t.Fatalf("unexpected object: %#v", out["object"])
 	}
 }
 

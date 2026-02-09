@@ -359,7 +359,7 @@ func (s *responsesSSEToChatState) finishReasonFromMapped(mapped map[string]any) 
 	}
 	// new-api aligned: when only tool calls were emitted (no text), use tool_calls.
 	if s.sawToolCall && !s.sawText {
-		finishReason = "tool_calls"
+		finishReason = finishReasonToolCalls
 	}
 	return finishReason
 }

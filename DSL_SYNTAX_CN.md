@@ -269,6 +269,8 @@ request { req_map <mode>; }
 v0.1 内置：
 
 - `openai_chat_to_openai_responses`：OpenAI-compatible `chat.completions` 请求 JSON → OpenAI `/responses` 请求 JSON
+- `anthropic_to_openai_chat`：Anthropic `/v1/messages` 请求 JSON → OpenAI `chat.completions` 请求 JSON
+- `gemini_to_openai_chat`：Gemini `generateContent` 请求 JSON → OpenAI `chat.completions` 请求 JSON
 
 ### 5.4 upstream（路径与 query 操作）
 
@@ -350,6 +352,8 @@ response { sse_parse <mode>; }
 - `anthropic_to_openai_chunks`（`sse_parse`）：Anthropic `/v1/messages` SSE → OpenAI stream chunks
 - `openai_to_anthropic_messages`（`resp_map`）：OpenAI-compatible `chat.completions` JSON → Anthropic `/v1/messages` JSON
 - `openai_to_anthropic_chunks`（`sse_parse`）：OpenAI-compatible `chat.completions` SSE → Anthropic `/v1/messages` SSE
+- `openai_to_gemini_chat` / `openai_to_gemini_generate_content`（`resp_map`）：OpenAI-compatible `chat.completions` JSON → Gemini `generateContent` JSON
+- `openai_to_gemini_chunks`（`sse_parse`）：OpenAI-compatible `chat.completions` SSE → Gemini SSE
 - `openai_responses_to_openai_chat`（`resp_map`）：OpenAI/Azure `/responses` JSON → OpenAI `chat.completions` JSON
 - `openai_responses_to_openai_chat_chunks`（`sse_parse`）：OpenAI/Azure `/responses` SSE → OpenAI `chat.completions` SSE chunks
 

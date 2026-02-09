@@ -1,0 +1,328 @@
+package apitransform
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/r9s-ai/open-next-router/pkg/apitypes"
+	"github.com/r9s-ai/open-next-router/pkg/jsonutil"
+)
+
+const (
+	openAIRoleAssistant = "assistant"
+	openAIRoleSystem    = "system"
+	finishContentFilter = "content_filter"
+)
+
+// MapGeminiGenerateContentToOpenAIChatCompletions maps Gemini request JSON to OpenAI chat request JSON.
+func MapGeminiGenerateContentToOpenAIChatCompletions(body []byte) ([]byte, error) {
+	root, err := apitypes.ParseJSONObject(body, "gemini request")
+	if err != nil {
+		return nil, err
+	}
+	out, err := MapGeminiGenerateContentToOpenAIChatCompletionsObject(root)
+	if err != nil {
+		return nil, err
+	}
+	return out.Marshal()
+}
+
+// MapGeminiGenerateContentToOpenAIChatCompletionsObject maps Gemini request object to OpenAI chat request object.
+func MapGeminiGenerateContentToOpenAIChatCompletionsObject(root apitypes.JSONObject) (apitypes.JSONObject, error) {
+	out := apitypes.JSONObject{}
+	messages := mapGeminiContentsToOpenAIMessages(root["contents"])
+	messages = prependGeminiSystemInstruction(root["system_instruction"], messages)
+	if len(messages) > 0 {
+		out["messages"] = messages
+	}
+
+	if cfg, _ := root["generation_config"].(map[string]any); cfg != nil {
+		if v, ok := cfg["temperature"].(float64); ok {
+			out["temperature"] = v
+		}
+		if v, ok := cfg["topP"].(float64); ok {
+			out["top_p"] = v
+		}
+		if v := jsonutil.CoerceInt(cfg["maxOutputTokens"]); v > 0 {
+			out["max_tokens"] = v
+		}
+		if v := jsonutil.CoerceInt(cfg["candidateCount"]); v > 0 {
+			out["n"] = v
+		}
+	}
+
+	return out, nil
+}
+
+func mapGeminiContentsToOpenAIMessages(rawContents any) []any {
+	contents, _ := rawContents.([]any)
+	messages := make([]any, 0, len(contents)+1)
+	for _, raw := range contents {
+		content, _ := raw.(map[string]any)
+		if content == nil {
+			continue
+		}
+		msg, ok := mapOneGeminiContent(content)
+		if ok {
+			messages = append(messages, msg)
+		}
+	}
+	return messages
+}
+
+func mapOneGeminiContent(content map[string]any) (apitypes.JSONObject, bool) {
+	role := convertGeminiRoleToOpenAI(jsonutil.CoerceString(content["role"]))
+	parts, _ := content["parts"].([]any)
+	if len(parts) == 0 {
+		return nil, false
+	}
+	media, toolCalls := mapGeminiParts(parts)
+	msg := apitypes.JSONObject{"role": role}
+	switch {
+	case len(toolCalls) > 0:
+		msg["content"] = ""
+		msg["tool_calls"] = toolCalls
+	case len(media) == 1:
+		if partType, partText := textPartFromAny(media[0]); partType == chatContentTypeText {
+			msg["content"] = partText
+		} else {
+			msg["content"] = media
+		}
+	default:
+		msg["content"] = media
+	}
+	return msg, true
+}
+
+func mapGeminiParts(parts []any) ([]any, []any) {
+	media := make([]any, 0, len(parts))
+	toolCalls := make([]any, 0, 2)
+	for _, pr := range parts {
+		p, _ := pr.(map[string]any)
+		if p == nil {
+			continue
+		}
+		if mapped, ok := mapGeminiPartToMedia(p); ok {
+			media = append(media, mapped)
+			continue
+		}
+		if call, ok := mapGeminiPartToToolCall(p, len(toolCalls)); ok {
+			toolCalls = append(toolCalls, call)
+		}
+	}
+	return media, toolCalls
+}
+
+func mapGeminiPartToMedia(p map[string]any) (apitypes.JSONObject, bool) {
+	if t := jsonutil.CoerceString(p["text"]); t != "" {
+		return apitypes.JSONObject{"type": chatContentTypeText, "text": t}, true
+	}
+	if inline, _ := p["inlineData"].(map[string]any); inline != nil {
+		mime := jsonutil.CoerceString(inline["mimeType"])
+		data := jsonutil.CoerceString(inline["data"])
+		if data != "" {
+			return apitypes.JSONObject{
+				"type": "image_url",
+				"image_url": apitypes.JSONObject{
+					"url": fmt.Sprintf("data:%s;base64,%s", mime, data),
+				},
+			}, true
+		}
+	}
+	if file, _ := p["fileData"].(map[string]any); file != nil {
+		uri := jsonutil.CoerceString(file["fileUri"])
+		if uri != "" {
+			return apitypes.JSONObject{
+				"type": "image_url",
+				"image_url": apitypes.JSONObject{
+					"url": uri,
+				},
+			}, true
+		}
+	}
+	return nil, false
+}
+
+func mapGeminiPartToToolCall(p map[string]any, idx int) (apitypes.JSONObject, bool) {
+	fc, _ := p["functionCall"].(map[string]any)
+	if fc == nil {
+		return nil, false
+	}
+	name := strings.TrimSpace(jsonutil.CoerceString(fc["name"]))
+	if name == "" {
+		return nil, false
+	}
+	args := "{}"
+	if fc["args"] != nil {
+		if b, err := json.Marshal(fc["args"]); err == nil {
+			args = string(b)
+		}
+	}
+	return apitypes.JSONObject{
+		"id":   fmt.Sprintf("call_%d", idx+1),
+		"type": chatRoleFunction,
+		"function": apitypes.JSONObject{
+			"name":      name,
+			"arguments": args,
+		},
+	}, true
+}
+
+func prependGeminiSystemInstruction(rawSystem any, messages []any) []any {
+	sys, _ := rawSystem.(map[string]any)
+	if sys == nil {
+		return messages
+	}
+	parts, _ := sys["parts"].([]any)
+	if len(parts) == 0 {
+		return messages
+	}
+	var text []string
+	for _, pr := range parts {
+		p, _ := pr.(map[string]any)
+		if p == nil {
+			continue
+		}
+		if t := strings.TrimSpace(jsonutil.CoerceString(p["text"])); t != "" {
+			text = append(text, t)
+		}
+	}
+	if len(text) == 0 {
+		return messages
+	}
+	return append([]any{apitypes.JSONObject{"role": openAIRoleSystem, "content": strings.Join(text, "\n")}}, messages...)
+}
+
+func textPartFromAny(v any) (partType string, partText string) {
+	switch m0 := v.(type) {
+	case map[string]any:
+		return jsonutil.CoerceString(m0["type"]), jsonutil.CoerceString(m0["text"])
+	case apitypes.JSONObject:
+		return jsonutil.CoerceString(m0["type"]), jsonutil.CoerceString(m0["text"])
+	default:
+		return "", ""
+	}
+}
+
+// MapOpenAIChatCompletionsToGeminiGenerateContentResponse maps OpenAI chat response JSON to Gemini response JSON.
+func MapOpenAIChatCompletionsToGeminiGenerateContentResponse(body []byte) ([]byte, error) {
+	root, err := apitypes.ParseJSONObject(body, "openai response")
+	if err != nil {
+		return nil, err
+	}
+	out, err := MapOpenAIChatCompletionsToGeminiGenerateContentResponseObject(root)
+	if err != nil {
+		return nil, err
+	}
+	return out.Marshal()
+}
+
+// MapOpenAIChatCompletionsToGeminiGenerateContentResponseObject maps OpenAI chat response object to Gemini response object.
+func MapOpenAIChatCompletionsToGeminiGenerateContentResponseObject(root apitypes.JSONObject) (apitypes.JSONObject, error) {
+	choices, _ := root["choices"].([]any)
+	if len(choices) == 0 {
+		return nil, fmt.Errorf("choices is required")
+	}
+	candidates := make([]any, 0, len(choices))
+	for _, raw := range choices {
+		ch, _ := raw.(map[string]any)
+		if ch == nil {
+			continue
+		}
+		msg, _ := ch["message"].(map[string]any)
+		if msg == nil {
+			continue
+		}
+		parts := make([]any, 0, 2)
+		if toolCalls, _ := msg["tool_calls"].([]any); len(toolCalls) > 0 {
+			for _, tr := range toolCalls {
+				tc, _ := tr.(map[string]any)
+				if tc == nil {
+					continue
+				}
+				fn, _ := tc["function"].(map[string]any)
+				name := jsonutil.CoerceString(fn["name"])
+				argsObj := apitypes.JSONObject{}
+				if args := jsonutil.CoerceString(fn["arguments"]); args != "" {
+					var v any
+					if err := json.Unmarshal([]byte(args), &v); err == nil {
+						if m, ok := v.(map[string]any); ok && m != nil {
+							argsObj = m
+						}
+					}
+				}
+				parts = append(parts, apitypes.JSONObject{
+					"functionCall": apitypes.JSONObject{
+						"name": name,
+						"args": argsObj,
+					},
+				})
+			}
+		} else {
+			parts = append(parts, apitypes.JSONObject{"text": jsonutil.CoerceString(msg["content"])})
+		}
+
+		finish := mapOpenAIFinishToGemini(jsonutil.CoerceString(ch["finish_reason"]))
+		candidates = append(candidates, apitypes.JSONObject{
+			"index":        jsonutil.CoerceInt(ch["index"]),
+			"finishReason": finish,
+			"content": apitypes.JSONObject{
+				"role":  "model",
+				"parts": parts,
+			},
+			"safetyRatings": []any{},
+		})
+	}
+
+	usageMeta := apitypes.JSONObject{}
+	if u, _ := root["usage"].(map[string]any); u != nil {
+		p := jsonutil.GetIntByPath(u, "$.prompt_tokens")
+		if p == 0 {
+			p = jsonutil.GetIntByPath(u, "$.input_tokens")
+		}
+		c := jsonutil.GetIntByPath(u, "$.completion_tokens")
+		if c == 0 {
+			c = jsonutil.GetIntByPath(u, "$.output_tokens")
+		}
+		t := jsonutil.GetIntByPath(u, "$.total_tokens")
+		if t == 0 {
+			t = p + c
+		}
+		usageMeta["promptTokenCount"] = p
+		usageMeta["candidatesTokenCount"] = c
+		usageMeta["totalTokenCount"] = t
+	}
+
+	out := apitypes.JSONObject{
+		"candidates": candidates,
+	}
+	if len(usageMeta) > 0 {
+		out["usageMetadata"] = usageMeta
+	}
+	return out, nil
+}
+
+func convertGeminiRoleToOpenAI(role string) string {
+	switch strings.TrimSpace(role) {
+	case "model":
+		return openAIRoleAssistant
+	case "function":
+		return "function"
+	case "system":
+		return openAIRoleSystem
+	default:
+		return "user"
+	}
+}
+
+func mapOpenAIFinishToGemini(finish string) string {
+	switch strings.TrimSpace(finish) {
+	case "length":
+		return "MAX_TOKENS"
+	case finishContentFilter:
+		return "SAFETY"
+	default:
+		return "STOP"
+	}
+}
