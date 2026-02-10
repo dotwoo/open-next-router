@@ -249,6 +249,14 @@ go test ./...
 go test ./...
 ```
 
+### onr-core stable versioning for external consumers
+
+`onr-core` is released with dedicated submodule tags: `onr-core/vX.Y.Z`.
+
+```bash
+go get github.com/r9s-ai/open-next-router/onr-core@v1.2.3
+```
+
 ## Upstream HTTP Proxy (per provider)
 
 You can configure an outbound HTTP proxy per upstream provider in `onr.yaml`:
