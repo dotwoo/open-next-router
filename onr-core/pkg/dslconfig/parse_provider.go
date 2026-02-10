@@ -7,7 +7,7 @@ import (
 
 const providerKeyword = "provider"
 
-func parseProviderConfig(path string, content string) (ProviderRouting, ProviderHeaders, ProviderRequestTransform, ProviderResponse, ProviderError, ProviderUsage, ProviderFinishReason, ProviderBalance, error) {
+func parseProviderConfig(path string, content string) (ProviderRouting, ProviderHeaders, ProviderRequestTransform, ProviderResponse, ProviderError, ProviderUsage, ProviderFinishReason, ProviderBalance, ProviderModels, error) {
 	s := newScanner(path, content)
 	var routing ProviderRouting
 	var headers ProviderHeaders
@@ -17,6 +17,7 @@ func parseProviderConfig(path string, content string) (ProviderRouting, Provider
 	var usage ProviderUsage
 	var finish ProviderFinishReason
 	var balance ProviderBalance
+	var models ProviderModels
 	for {
 		tok := s.nextNonTrivia()
 		if tok.kind == tokEOF {
@@ -25,15 +26,15 @@ func parseProviderConfig(path string, content string) (ProviderRouting, Provider
 		if tok.kind == tokIdent && tok.text == providerKeyword {
 			nameTok := s.nextNonTrivia()
 			if nameTok.kind != tokString {
-				return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, s.errAt(nameTok, "expected provider name string literal")
+				return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, s.errAt(nameTok, "expected provider name string literal")
 			}
 			lb := s.nextNonTrivia()
 			if lb.kind != tokLBrace {
-				return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, s.errAt(lb, "expected '{' after provider name")
+				return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, s.errAt(lb, "expected '{' after provider name")
 			}
-			r, h, rq, resp, e, u, fr, bq, err := parseProviderBody(s)
+			r, h, rq, resp, e, u, fr, bq, mq, err := parseProviderBody(s)
 			if err != nil {
-				return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, err
+				return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, err
 			}
 			routing = r
 			headers = h
@@ -43,13 +44,14 @@ func parseProviderConfig(path string, content string) (ProviderRouting, Provider
 			usage = u
 			finish = fr
 			balance = bq
+			models = mq
 			continue
 		}
 	}
-	return routing, headers, req, response, perr, usage, finish, balance, nil
+	return routing, headers, req, response, perr, usage, finish, balance, models, nil
 }
 
-func parseProviderBody(s *scanner) (ProviderRouting, ProviderHeaders, ProviderRequestTransform, ProviderResponse, ProviderError, ProviderUsage, ProviderFinishReason, ProviderBalance, error) {
+func parseProviderBody(s *scanner) (ProviderRouting, ProviderHeaders, ProviderRequestTransform, ProviderResponse, ProviderError, ProviderUsage, ProviderFinishReason, ProviderBalance, ProviderModels, error) {
 	var routing ProviderRouting
 	var headers ProviderHeaders
 	var req ProviderRequestTransform
@@ -58,23 +60,24 @@ func parseProviderBody(s *scanner) (ProviderRouting, ProviderHeaders, ProviderRe
 	var usage ProviderUsage
 	var finish ProviderFinishReason
 	var balance ProviderBalance
+	var models ProviderModels
 	for {
 		tok := s.nextNonTrivia()
 		switch tok.kind {
 		case tokEOF:
-			return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, s.errAt(tok, "unexpected EOF in provider block")
+			return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, s.errAt(tok, "unexpected EOF in provider block")
 		case tokRBrace:
-			return routing, headers, req, response, perr, usage, finish, balance, nil
+			return routing, headers, req, response, perr, usage, finish, balance, models, nil
 		case tokIdent:
 			switch tok.text {
 			case "defaults":
-				if err := parseDefaultsBlock(s, &routing, &headers, &req, &response, &perr, &usage, &finish, &balance); err != nil {
-					return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, err
+				if err := parseDefaultsBlock(s, &routing, &headers, &req, &response, &perr, &usage, &finish, &balance, &models); err != nil {
+					return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, err
 				}
 			case "match":
 				m, mh, mreq, mr, me, mu, mfr, err := parseMatchBlock(s)
 				if err != nil {
-					return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, err
+					return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, err
 				}
 				routing.Matches = append(routing.Matches, m)
 				headers.Matches = append(headers.Matches, mh)
@@ -85,7 +88,7 @@ func parseProviderBody(s *scanner) (ProviderRouting, ProviderHeaders, ProviderRe
 				finish.Matches = append(finish.Matches, mfr)
 			default:
 				if err := skipStmtOrBlock(s); err != nil {
-					return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, err
+					return ProviderRouting{}, ProviderHeaders{}, ProviderRequestTransform{}, ProviderResponse{}, ProviderError{}, ProviderUsage{}, ProviderFinishReason{}, ProviderBalance{}, ProviderModels{}, err
 				}
 			}
 		default:
@@ -94,7 +97,7 @@ func parseProviderBody(s *scanner) (ProviderRouting, ProviderHeaders, ProviderRe
 	}
 }
 
-func parseDefaultsBlock(s *scanner, routing *ProviderRouting, headers *ProviderHeaders, req *ProviderRequestTransform, response *ProviderResponse, perr *ProviderError, usage *ProviderUsage, finish *ProviderFinishReason, balance *ProviderBalance) error {
+func parseDefaultsBlock(s *scanner, routing *ProviderRouting, headers *ProviderHeaders, req *ProviderRequestTransform, response *ProviderResponse, perr *ProviderError, usage *ProviderUsage, finish *ProviderFinishReason, balance *ProviderBalance, models *ProviderModels) error {
 	lb := s.nextNonTrivia()
 	if lb.kind != tokLBrace {
 		return s.errAt(lb, "expected '{' after defaults")
@@ -107,6 +110,7 @@ func parseDefaultsBlock(s *scanner, routing *ProviderRouting, headers *ProviderH
 		errPhase:       func() error { return parseErrorPhase(s, &perr.Defaults) },
 		metrics:        func() error { return parseMetricsPhase(s, &usage.Defaults, &finish.Defaults) },
 		balance:        func() error { return parseBalancePhase(s, &balance.Defaults) },
+		models:         func() error { return parseModelsPhase(s, &models.Defaults) },
 	})
 }
 
@@ -240,6 +244,7 @@ type phaseHandlers struct {
 	errPhase       func() error
 	metrics        func() error
 	balance        func() error
+	models         func() error
 	onUnknown      func() error
 }
 
@@ -299,6 +304,9 @@ func buildPhaseDispatch(h phaseHandlers) map[string]func() error {
 	}
 	if h.balance != nil {
 		dispatch["balance"] = h.balance
+	}
+	if h.models != nil {
+		dispatch["models"] = h.models
 	}
 	return dispatch
 }

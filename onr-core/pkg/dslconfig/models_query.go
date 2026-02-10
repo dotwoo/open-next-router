@@ -1,0 +1,159 @@
+package dslconfig
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
+)
+
+const (
+	modelsModeOpenAI = "openai"
+	modelsModeGemini = "gemini"
+	modelsModeCustom = "custom"
+)
+
+type ModelsQueryConfig struct {
+	Mode string `json:"mode,omitempty"`
+
+	Method string `json:"method,omitempty"`
+	Path   string `json:"path,omitempty"`
+
+	IDPaths      []string `json:"id_paths,omitempty"`
+	IDRegex      string   `json:"id_regex,omitempty"`
+	IDAllowRegex string   `json:"id_allow_regex,omitempty"`
+
+	Headers []HeaderOp `json:"headers,omitempty"`
+}
+
+type ProviderModels struct {
+	Defaults ModelsQueryConfig
+}
+
+func (p ProviderModels) Select(_ *dslmeta.Meta) (ModelsQueryConfig, bool) {
+	cfg := normalizeModelsQueryConfig(p.Defaults)
+	if strings.TrimSpace(cfg.Mode) == "" {
+		return ModelsQueryConfig{}, false
+	}
+	return cfg, true
+}
+
+func normalizeModelsQueryConfig(in ModelsQueryConfig) ModelsQueryConfig {
+	out := in
+	mode := strings.ToLower(strings.TrimSpace(in.Mode))
+	out.Mode = mode
+
+	if strings.TrimSpace(out.Method) == "" {
+		out.Method = "GET"
+	}
+	if mode == modelsModeOpenAI {
+		if strings.TrimSpace(out.Path) == "" {
+			out.Path = "/v1/models"
+		}
+		if len(out.IDPaths) == 0 {
+			out.IDPaths = []string{"$.data[*].id"}
+		}
+	}
+	if mode == modelsModeGemini {
+		if strings.TrimSpace(out.Path) == "" {
+			out.Path = "/v1beta/models"
+		}
+		if len(out.IDPaths) == 0 {
+			out.IDPaths = []string{"$.models[*].name"}
+		}
+		if strings.TrimSpace(out.IDRegex) == "" {
+			out.IDRegex = "^models/(.+)$"
+		}
+	}
+	return out
+}
+
+func ExtractModelIDs(cfg ModelsQueryConfig, respBody []byte) ([]string, error) {
+	normalized := normalizeModelsQueryConfig(cfg)
+	if len(normalized.IDPaths) == 0 {
+		return nil, nil
+	}
+
+	var data any
+	if err := json.Unmarshal(respBody, &data); err != nil {
+		return nil, fmt.Errorf("parse response json: %w", err)
+	}
+
+	var (
+		rewriteRE *regexp.Regexp
+		allowRE   *regexp.Regexp
+		err       error
+	)
+	if strings.TrimSpace(normalized.IDRegex) != "" {
+		rewriteRE, err = regexp.Compile(strings.TrimSpace(normalized.IDRegex))
+		if err != nil {
+			return nil, fmt.Errorf("invalid id_regex: %w", err)
+		}
+	}
+	if strings.TrimSpace(normalized.IDAllowRegex) != "" {
+		allowRE, err = regexp.Compile(strings.TrimSpace(normalized.IDAllowRegex))
+		if err != nil {
+			return nil, fmt.Errorf("invalid id_allow_regex: %w", err)
+		}
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 32)
+	for _, path := range normalized.IDPaths {
+		values := extractStringsByPath(data, path)
+		for _, raw := range values {
+			id := strings.TrimSpace(raw)
+			if id == "" {
+				continue
+			}
+			if rewriteRE != nil {
+				matches := rewriteRE.FindStringSubmatch(id)
+				if len(matches) == 0 {
+					continue
+				}
+				if len(matches) >= 2 {
+					id = strings.TrimSpace(matches[1])
+				} else {
+					id = strings.TrimSpace(matches[0])
+				}
+				if id == "" {
+					continue
+				}
+			}
+			if allowRE != nil && !allowRE.MatchString(id) {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func extractStringsByPath(root any, path string) []string {
+	p := strings.TrimSpace(path)
+	if p == "" || !strings.HasPrefix(p, "$.") {
+		return nil
+	}
+	parts := strings.Split(strings.TrimPrefix(p, "$."), ".")
+	vals, ok := collectPathValues(root, parts)
+	if !ok || len(vals) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		switch t := v.(type) {
+		case string:
+			s := strings.TrimSpace(t)
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}

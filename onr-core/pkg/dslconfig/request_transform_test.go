@@ -64,7 +64,7 @@ provider "azure-openai" {
   }
 }
 `
-	routing, headers, req, response, perr, usage, finish, balance, err := parseProviderConfig("azure-openai.conf", conf)
+	routing, headers, req, response, perr, usage, finish, balance, models, err := parseProviderConfig("azure-openai.conf", conf)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}
@@ -74,6 +74,7 @@ provider "azure-openai" {
 	_ = usage
 	_ = finish
 	_ = balance
+	_ = models
 
 	m := &dslmeta.Meta{
 		API:             "chat.completions",
@@ -112,7 +113,7 @@ provider "t" {
   }
 }
 `
-	routing, headers, req, response, perr, usage, finish, balance, err := parseProviderConfig("t.conf", conf)
+	routing, headers, req, response, perr, usage, finish, balance, models, err := parseProviderConfig("t.conf", conf)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}
@@ -123,6 +124,7 @@ provider "t" {
 	_ = usage
 	_ = finish
 	_ = balance
+	_ = models
 	if len(req.Defaults.JSONOps) != 1 {
 		t.Fatalf("expected 1 json op, got %d", len(req.Defaults.JSONOps))
 	}

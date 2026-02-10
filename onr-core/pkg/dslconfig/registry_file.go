@@ -114,7 +114,7 @@ func parseProvidersFromMergedFile(path string, content string) (map[string]Provi
 			if lb.kind != tokLBrace {
 				return nil, nil, s.errAt(lb, "expected '{' after provider name")
 			}
-			routing, headers, req, response, perr, usage, finish, balance, err := parseProviderBody(s)
+			routing, headers, req, response, perr, usage, finish, balance, models, err := parseProviderBody(s)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -133,6 +133,9 @@ func parseProvidersFromMergedFile(path string, content string) (map[string]Provi
 			if err := validateProviderBalance(path, providerName, balance); err != nil {
 				return nil, nil, err
 			}
+			if err := validateProviderModels(path, providerName, models); err != nil {
+				return nil, nil, err
+			}
 
 			next[providerName] = ProviderFile{
 				Name:     providerName,
@@ -146,6 +149,7 @@ func parseProvidersFromMergedFile(path string, content string) (map[string]Provi
 				Usage:    usage,
 				Finish:   finish,
 				Balance:  balance,
+				Models:   models,
 			}
 			loaded = append(loaded, providerName)
 		default:

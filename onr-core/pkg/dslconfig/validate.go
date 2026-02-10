@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -64,7 +65,7 @@ func ValidateProviderFile(path string) (ProviderFile, error) {
 			p, providerName, expected,
 		)
 	}
-	routing, headers, req, response, perr, usage, finish, balance, err := parseProviderConfig(p, content)
+	routing, headers, req, response, perr, usage, finish, balance, models, err := parseProviderConfig(p, content)
 	if err != nil {
 		return ProviderFile{}, err
 	}
@@ -89,6 +90,9 @@ func ValidateProviderFile(path string) (ProviderFile, error) {
 	if err := validateProviderBalance(p, providerName, balance); err != nil {
 		return ProviderFile{}, err
 	}
+	if err := validateProviderModels(p, providerName, models); err != nil {
+		return ProviderFile{}, err
+	}
 	return ProviderFile{
 		Name:     providerName,
 		Path:     p,
@@ -101,6 +105,7 @@ func ValidateProviderFile(path string) (ProviderFile, error) {
 		Usage:    usage,
 		Finish:   finish,
 		Balance:  balance,
+		Models:   models,
 	}, nil
 }
 
@@ -328,6 +333,10 @@ func validateProviderBalance(path, providerName string, balance ProviderBalance)
 	return nil
 }
 
+func validateProviderModels(path, providerName string, models ProviderModels) error {
+	return validateModelsQueryConfig(path, providerName, "defaults.models", models.Defaults)
+}
+
 func validateBalanceQueryConfig(path, providerName, scope string, cfg BalanceQueryConfig) error {
 	mode := strings.ToLower(strings.TrimSpace(cfg.Mode))
 	if mode == "" {
@@ -444,6 +453,57 @@ func validateBalanceURLPath(path, providerName, scope, field, value string) erro
 
 func validateBalanceHeaders(path, providerName, scope string, headers []HeaderOp) error {
 	return validateHeaderOps(path, providerName, scope+".headers", headers)
+}
+
+func validateModelsQueryConfig(path, providerName, scope string, cfg ModelsQueryConfig) error {
+	mode := strings.ToLower(strings.TrimSpace(cfg.Mode))
+	if mode == "" {
+		return nil
+	}
+	switch mode {
+	case modelsModeOpenAI, modelsModeGemini, modelsModeCustom:
+		// ok
+	default:
+		return fmt.Errorf("provider %q in %q: %s unsupported models_mode %q", providerName, path, scope, cfg.Mode)
+	}
+	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
+	if method != "" && method != "GET" && method != "POST" {
+		return fmt.Errorf("provider %q in %q: %s method must be GET or POST", providerName, path, scope)
+	}
+	if mode == modelsModeCustom && strings.TrimSpace(cfg.Path) == "" {
+		return fmt.Errorf("provider %q in %q: %s path is required when models_mode=custom", providerName, path, scope)
+	}
+	if err := validateBalanceURLPath(path, providerName, scope, "path", cfg.Path); err != nil {
+		return err
+	}
+
+	idPaths := cfg.IDPaths
+	if mode == modelsModeOpenAI && len(idPaths) == 0 {
+		idPaths = []string{"$.data[*].id"}
+	}
+	if mode == modelsModeGemini && len(idPaths) == 0 {
+		idPaths = []string{"$.models[*].name"}
+	}
+	if mode == modelsModeCustom && len(idPaths) == 0 {
+		return fmt.Errorf("provider %q in %q: %s requires at least one id_path", providerName, path, scope)
+	}
+	for i, p := range idPaths {
+		v := strings.TrimSpace(p)
+		if !strings.HasPrefix(v, "$.") {
+			return fmt.Errorf("provider %q in %q: %s id_path[%d] must start with '$.'", providerName, path, scope, i)
+		}
+	}
+	if strings.TrimSpace(cfg.IDRegex) != "" {
+		if _, err := regexp.Compile(strings.TrimSpace(cfg.IDRegex)); err != nil {
+			return fmt.Errorf("provider %q in %q: %s invalid id_regex: %w", providerName, path, scope, err)
+		}
+	}
+	if strings.TrimSpace(cfg.IDAllowRegex) != "" {
+		if _, err := regexp.Compile(strings.TrimSpace(cfg.IDAllowRegex)); err != nil {
+			return fmt.Errorf("provider %q in %q: %s invalid id_allow_regex: %w", providerName, path, scope, err)
+		}
+	}
+	return validateHeaderOps(path, providerName, scope+".headers", cfg.Headers)
 }
 
 func validateFinishReasonExtractConfig(path, providerName, scope string, cfg FinishReasonExtractConfig) error {

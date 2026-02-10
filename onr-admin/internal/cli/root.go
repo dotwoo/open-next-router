@@ -31,6 +31,7 @@ func newRootCmd() *cobra.Command {
 		newCryptoCmd(),
 		newValidateCmd(),
 		newBalanceCmd(),
+		newModelsCmd(),
 		newPricingCmd(),
 		newTUICmd(),
 	)

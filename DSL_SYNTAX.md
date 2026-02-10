@@ -20,6 +20,7 @@ The directory can be customized via `providers.dir` (config) or `ONR_PROVIDERS_D
   - [5.5 response](#55-response)
   - [5.6 error](#56-error)
   - [5.7 metrics (usage extraction)](#57-metrics-usage-extraction)
+  - [5.8 models (upstream model list query)](#58-models-upstream-model-list-query)
 - [6. Expression context (built-in variables)](#6-expression-context-built-in-variables)
 - [7. Directive reference (nginx style)](#7-directive-reference-nginx-style)
   - [7.1 file-level directives](#71-file-level-directives)
@@ -31,6 +32,8 @@ The directory can be customized via `providers.dir` (config) or `ONR_PROVIDERS_D
   - [7.7 response](#77-response)
   - [7.8 error](#78-error)
   - [7.9 metrics (usage extraction)](#79-metrics-usage-extraction)
+  - [7.10 balance (upstream balance query)](#710-balance-upstream-balance-query)
+  - [7.11 models (upstream model list query)](#711-models-upstream-model-list-query)
 - [8. Built-in variables (reference)](#8-built-in-variables-reference)
 
 ---
@@ -141,6 +144,8 @@ Available blocks:
 - `response { ... }`
 - `error { ... }`
 - `metrics { ... }`
+- `balance { ... }`
+- `models { ... }` (**defaults only** in v0.1)
 
 Merge rule (important):
 
@@ -488,6 +493,47 @@ metrics {
 
 Runtime cost calculation switch is controlled globally by `onr.yaml`:
 `pricing.enabled: true|false`.
+
+### 5.8 models (upstream model list query)
+
+`models` declares how a provider exposes its upstream model listing API and how model IDs are extracted.
+This block is supported in `defaults` (not `match`) in v0.1.
+
+```conf
+models {
+  models_mode openai;             # openai|gemini|custom
+}
+```
+
+Custom example:
+
+```conf
+models {
+  models_mode custom;
+  method GET;
+  path "/v1beta/models";
+  id_path "$.models[*].name";
+  id_regex "^models/(.+)$";
+  id_allow_regex "^gemini-";
+}
+```
+
+Semantics:
+
+- `models_mode openai` default path/extract:
+  - `path /v1/models`
+  - `id_path $.data[*].id`
+- `models_mode gemini` default path/extract:
+  - `path /v1beta/models`
+  - `id_path $.models[*].name`
+  - `id_regex ^models/(.+)$`
+- `models_mode custom` requires explicit `path` and at least one `id_path`.
+- `id_path` is repeatable; extracted IDs are unioned and deduplicated.
+- `id_regex` rewrites each extracted value:
+  - if regex contains a capture group, group 1 is used as final ID;
+  - otherwise full match is used;
+  - non-matching values are dropped.
+- `id_allow_regex` is an optional final whitelist filter.
 
 ## 6. Expression context (built-in variables)
 
@@ -1091,6 +1137,77 @@ Multiple: yes
 ```
 
 - Optional overrides for `balance_mode openai`.
+
+### 7.11 models (upstream model list query)
+
+#### models_mode
+
+```text
+Syntax:  models_mode <mode>;
+Default: —
+Context: models
+Multiple: no
+```
+
+- Supported: `openai` / `gemini` / `custom`.
+
+#### method
+
+```text
+Syntax:  method <GET|POST>;
+Default: GET
+Context: models
+Multiple: yes
+```
+
+#### path
+
+```text
+Syntax:  path <path-or-url>;
+Default: mode-dependent
+Context: models
+Multiple: yes
+```
+
+- `models_mode openai`: default `/v1/models`
+- `models_mode gemini`: default `/v1beta/models`
+- `models_mode custom`: required
+
+#### id_path
+
+```text
+Syntax:  id_path <jsonpath>;
+Default: mode-dependent
+Context: models
+Multiple: yes
+```
+
+- `models_mode openai`: default `$.data[*].id`
+- `models_mode gemini`: default `$.models[*].name`
+- `models_mode custom`: at least one `id_path` is required
+
+#### id_regex / id_allow_regex
+
+```text
+Syntax:  id_regex <regex>;
+Syntax:  id_allow_regex <regex>;
+Default: —
+Context: models
+Multiple: yes
+```
+
+- `id_regex` is a rewrite step (capture group 1 preferred).
+- `id_allow_regex` is a post-rewrite whitelist filter.
+
+#### set_header / del_header
+
+```text
+Syntax:  set_header <Header-Name> <expr>;
+Syntax:  del_header <Header-Name>;
+Default: —
+Context: models
+Multiple: yes
+```
 
 ---
 
