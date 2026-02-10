@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/r9s-ai/open-next-router/onr-admin/store"
+	"github.com/r9s-ai/open-next-router/onr-admin/internal/store"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/keystore"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/models"

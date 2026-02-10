@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/r9s-ai/open-next-router/onr-admin/store"
+	"github.com/r9s-ai/open-next-router/onr-admin/internal/store"
 )
 
 func Run(cfgPath string, in io.Reader, out io.Writer) error {

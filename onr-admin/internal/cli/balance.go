@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/r9s-ai/open-next-router/onr-admin/store"
+	"github.com/r9s-ai/open-next-router/onr-admin/internal/store"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/balancequery"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"

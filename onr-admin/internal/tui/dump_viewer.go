@@ -15,7 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/r9s-ai/open-next-router/onr-admin/store"
+	"github.com/r9s-ai/open-next-router/onr-admin/internal/store"
 )
 
 type dumpViewerState int
