@@ -6,8 +6,9 @@ server:
   pid_file: "/var/run/onr.pid"
 
 auth:
-  # Public API key for calling open-next-router
-  api_key: "change-me"
+  # Optional legacy master key (not recommended).
+  # Recommended: manage client keys in keys.yaml -> access_keys.
+  api_key: ""
 
 providers:
   # Directory containing provider DSL files (*.conf)

@@ -54,7 +54,7 @@ Usage:
 Options:
   --mode <service|docker|docker-compose> Install mode (required)
   --version <vX.Y.Z|X.Y.Z>     Runtime release tag only (default: latest runtime v*)
-  --api-key <value>            ONR API key (required on first install)
+  --api-key <value>            Default client access key (required on first install)
   --listen <addr>              ONR listen address (default: :3300)
   --host-port <port>           Docker host port (default: same as listen port)
   --service-name <name>        systemd service name / default container name (default: onr)
@@ -325,7 +325,9 @@ server:
   pid_file: "${pid_file}"
 
 auth:
-  api_key: "change-me"
+  # Optional legacy master key.
+  # Recommended: use keys.yaml access_keys for client authentication.
+  api_key: ""
 
 providers:
   dir: "${PROVIDERS_DIR}"
@@ -400,8 +402,63 @@ ensure_api_key() {
   if [[ -n "${API_KEY}" ]]; then
     return 0
   fi
-  API_KEY="$(read_env_value "ONR_API_KEY" "${ENV_FILE}" || true)"
-  [[ -n "${API_KEY}" ]] || die "--api-key is required on first install (or keep ONR_API_KEY in ${ENV_FILE})"
+  API_KEY="$(read_env_value "ONR_ACCESS_KEY_DEFAULT" "${ENV_FILE}" || true)"
+  if [[ -z "${API_KEY}" ]]; then
+    API_KEY="$(read_env_value "ONR_API_KEY" "${ENV_FILE}" || true)"
+  fi
+  [[ -n "${API_KEY}" ]] || die "--api-key is required on first install (or keep ONR_ACCESS_KEY_DEFAULT/ONR_API_KEY in ${ENV_FILE})"
+}
+
+seed_default_access_key_in_keys_file() {
+  if (( DRY_RUN == 1 )); then
+    log "[dry-run] set access_keys.default in ${KEYS_FILE}"
+    return 0
+  fi
+  [[ -f "${KEYS_FILE}" ]] || return 0
+  if command -v yq >/dev/null 2>&1; then
+    local before
+    before="$(mktemp)"
+    cp -a "${KEYS_FILE}" "${before}"
+    API_KEY="${API_KEY}" yq -i '
+      .access_keys = (.access_keys // []) |
+      if (.access_keys | length) == 0 then
+        .access_keys = [{"name":"default","value":strenv(API_KEY),"comment":"default access key"}]
+      else
+        .access_keys[0].name = (.access_keys[0].name // "default") |
+        .access_keys[0].value = strenv(API_KEY) |
+        .access_keys[0].comment = (.access_keys[0].comment // "default access key")
+      end
+    ' "${KEYS_FILE}"
+    rm -f "${before}"
+    return 0
+  fi
+  if ! grep -Eq "^access_keys:" "${KEYS_FILE}"; then
+    cat >>"${KEYS_FILE}" <<EOF
+
+access_keys:
+  - name: "default"
+    value: "${API_KEY}"
+    comment: "default access key"
+EOF
+    return 0
+  fi
+  if grep -Eq "^\\s*-\\s*name:\\s*\"default\"" "${KEYS_FILE}"; then
+    local tmp
+    tmp="$(mktemp)"
+    awk -v v="${API_KEY}" '
+      BEGIN {in_def=0}
+      /^[[:space:]]*-[[:space:]]*name:[[:space:]]*"default"[[:space:]]*$/ {in_def=1; print; next}
+      in_def==1 && /^[[:space:]]*value:[[:space:]]*/ {print "    value: \"" v "\""; in_def=0; next}
+      {print}
+    ' "${KEYS_FILE}" >"${tmp}"
+    mv "${tmp}" "${KEYS_FILE}"
+    return 0
+  fi
+  cat >>"${KEYS_FILE}" <<EOF
+  - name: "default"
+    value: "${API_KEY}"
+    comment: "default access key"
+EOF
 }
 
 set_permissions_service() {
@@ -852,6 +909,8 @@ main() {
   write_onr_config "${pid_file}"
 
   ensure_api_key
+  seed_default_access_key_in_keys_file
+  upsert_env_value "ONR_ACCESS_KEY_DEFAULT" "${API_KEY}"
   upsert_env_value "ONR_API_KEY" "${API_KEY}"
 
   if [[ "${MODE}" == "service" ]]; then

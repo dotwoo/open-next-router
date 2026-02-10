@@ -65,3 +65,25 @@ func TestMiddleware_TokenKey_UK64(t *testing.T) {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
 }
+
+func TestMiddleware_AccessKey_WithoutMasterKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	match := func(accessKey string) (string, bool) {
+		if accessKey == "ak-1" {
+			return "client1", true
+		}
+		return "", false
+	}
+	r := gin.New()
+	r.Use(Middleware("", match))
+	r.GET("/ok", func(c *gin.Context) { c.String(200, "ok") })
+
+	req := httptest.NewRequest(http.MethodGet, "/ok", nil)
+	req.Header.Set("Authorization", "Bearer ak-1")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}

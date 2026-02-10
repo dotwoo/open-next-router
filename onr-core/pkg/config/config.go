@@ -218,9 +218,6 @@ func applyEnvOverrides(cfg *Config) {
 }
 
 func validate(cfg *Config) error {
-	if strings.TrimSpace(cfg.Auth.APIKey) == "" {
-		return errors.New("auth.api_key is required (or set ONR_API_KEY)")
-	}
 	for prov, raw := range cfg.UpstreamProxies.ByProvider {
 		p := strings.ToLower(strings.TrimSpace(prov))
 		v := strings.TrimSpace(raw)

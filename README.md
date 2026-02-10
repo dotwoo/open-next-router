@@ -138,13 +138,13 @@ Observability:
 
 ## Auth
 
-- `Authorization: Bearer <ONR_API_KEY>` (legacy master key)
-- `x-api-key: <ONR_API_KEY>` (compatible)
-- `x-goog-api-key: <ONR_API_KEY>` (compatible)
+- Recommended: `Authorization: Bearer <ACCESS_KEY_FROM_KEYS_YAML>`
+- Compatible headers: `x-api-key` / `x-goog-api-key`
+- Optional legacy mode: `auth.api_key` (master key in `onr.yaml`)
 
 ### URI-like token key (onr:v1?)
 
-If your client can only set a single API key and cannot add custom headers, you can use an URI-like token key:
+If your client can only set a single API key and cannot add custom headers, you can use a URI-like token key:
 
 **No-sig mode (editable):**
 

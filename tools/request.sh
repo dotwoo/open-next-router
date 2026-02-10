@@ -30,7 +30,8 @@ Examples:
 Env (auto source repo .env if exists):
   ONR_BASE_URL    Default: derived from ONR_LISTEN or http://127.0.0.1:3300
   ONR_LISTEN      e.g. :3300
-  ONR_API_KEY     used as Authorization: Bearer <key>
+  ONR_ACCESS_KEY_DEFAULT  preferred auth key (Authorization: Bearer <key>)
+  ONR_API_KEY             legacy fallback auth key
 EOF
   exit 2
 }
@@ -141,10 +142,11 @@ else
 fi
 
 if [[ "${no_auth}" != "true" ]]; then
-  if [[ -n "${ONR_API_KEY:-}" ]]; then
-    auth_header=("Authorization: Bearer ${ONR_API_KEY}")
+  auth_key="${ONR_ACCESS_KEY_DEFAULT:-${ONR_API_KEY:-}}"
+  if [[ -n "${auth_key:-}" ]]; then
+    auth_header=("Authorization: Bearer ${auth_key}")
   else
-    die "ONR_API_KEY is empty (set it in .env or use --no-auth)"
+    die "ONR_ACCESS_KEY_DEFAULT/ONR_API_KEY is empty (set it in .env or use --no-auth)"
   fi
 fi
 

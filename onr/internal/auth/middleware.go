@@ -13,17 +13,6 @@ type AccessKeyMatcher func(accessKey string) (name string, ok bool)
 func Middleware(masterKey string, matchAccessKey AccessKeyMatcher) gin.HandlerFunc {
 	expected := strings.TrimSpace(masterKey)
 	return func(c *gin.Context) {
-		if expected == "" {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"error": gin.H{
-					"message": "server misconfigured: missing api_key",
-					"type":    "server_error",
-					"code":    "server_misconfigured",
-				},
-			})
-			return
-		}
-
 		got := ""
 		if v := strings.TrimSpace(c.GetHeader("Authorization")); strings.HasPrefix(v, "Bearer ") {
 			got = strings.TrimSpace(strings.TrimPrefix(v, "Bearer "))
@@ -36,9 +25,15 @@ func Middleware(masterKey string, matchAccessKey AccessKeyMatcher) gin.HandlerFu
 		}
 
 		// Legacy: exact match master key.
-		if subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1 {
+		if expected != "" && subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1 {
 			c.Next()
 			return
+		}
+		if matchAccessKey != nil {
+			if _, ok := matchAccessKey(got); ok {
+				c.Next()
+				return
+			}
 		}
 
 		// Token key: onr:v1?... (no-sig, editable)
@@ -46,7 +41,7 @@ func Middleware(masterKey string, matchAccessKey AccessKeyMatcher) gin.HandlerFu
 			claims, accessKey, err := ParseTokenKeyV1(got)
 			if err == nil && claims != nil && strings.TrimSpace(accessKey) != "" {
 				ok := false
-				if subtle.ConstantTimeCompare([]byte(accessKey), []byte(expected)) == 1 {
+				if expected != "" && subtle.ConstantTimeCompare([]byte(accessKey), []byte(expected)) == 1 {
 					ok = true
 				}
 				if !ok && matchAccessKey != nil {

@@ -87,16 +87,8 @@ upstream_proxies:
 }
 
 func TestValidate(t *testing.T) {
-	t.Run("missing api key", func(t *testing.T) {
-		cfg := &Config{}
-		if err := validate(cfg); err == nil {
-			t.Fatalf("expected error")
-		}
-	})
-
 	t.Run("invalid proxy url", func(t *testing.T) {
 		cfg := &Config{}
-		cfg.Auth.APIKey = "k"
 		cfg.UpstreamProxies.ByProvider = map[string]string{"openai": "127.0.0.1:7890"}
 		if err := validate(cfg); err == nil {
 			t.Fatalf("expected error")
@@ -105,7 +97,6 @@ func TestValidate(t *testing.T) {
 
 	t.Run("invalid traffic max bytes", func(t *testing.T) {
 		cfg := &Config{}
-		cfg.Auth.APIKey = "k"
 		cfg.UpstreamProxies.ByProvider = map[string]string{}
 		cfg.TrafficDump.MaxBytes = -1
 		if err := validate(cfg); err == nil {
@@ -115,7 +106,6 @@ func TestValidate(t *testing.T) {
 
 	t.Run("oauth enabled requires dir", func(t *testing.T) {
 		cfg := &Config{}
-		cfg.Auth.APIKey = "k"
 		cfg.UpstreamProxies.ByProvider = map[string]string{}
 		cfg.OAuth.TokenPersist.Enabled = true
 		cfg.OAuth.TokenPersist.Dir = "  "
