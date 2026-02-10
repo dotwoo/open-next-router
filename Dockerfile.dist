@@ -3,6 +3,7 @@ RUN adduser -D -H -u 10001 app
 # The binary is provided by GoReleaser (dockers_v2) under a platform subdir.
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/onr /usr/local/bin/onr
+COPY ${TARGETPLATFORM}/onr-admin /usr/local/bin/onr-admin
 USER app
 WORKDIR /home/app
 EXPOSE 3000

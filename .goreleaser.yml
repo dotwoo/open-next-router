@@ -142,6 +142,7 @@ dockers_v2:
   - id: onr
     ids:
       - onr
+      - onr-admin
     dockerfile: Dockerfile.dist
     images:
       - "ghcr.io/r9s-ai/open-next-router"
