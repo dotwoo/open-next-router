@@ -16,15 +16,117 @@
 
 open-next-router (ONR) is a lightweight API gateway that routes OpenAI-style endpoints to upstream providers via declarative provider configuration (DSL).
 
+## DSL (nginx-like, atomic) at a glance
+
+All runtime behavior (routing, auth headers, request/response transforms, SSE parsing, usage extraction, etc.) is explicitly described
+by provider DSL files under `config/providers/*.conf`.
+
+```conf
+# Minimal: route + auth
+# config/providers/acme.conf
+syntax "next-router/0.1";
+
+provider "acme" {
+  defaults {
+    upstream_config {
+      base_url = "https://api.example.com";
+    }
+    auth {
+      auth_bearer;
+    }
+  }
+
+  match api = "chat.completions" {
+    upstream {
+      set_path "/v1/chat/completions";
+    }
+    response {
+      resp_passthrough;
+    }
+  }
+}
+```
+
+```conf
+# Extended: opt-in compatibility transforms (examples)
+# config/providers/anthropic.conf
+syntax "next-router/0.1";
+
+provider "anthropic" {
+  defaults {
+    upstream_config {
+      base_url = "https://api.anthropic.com";
+    }
+    auth {
+      auth_header_key "x-api-key";
+    }
+    request {
+      set_header "anthropic-version" "2023-06-01";
+    }
+  }
+
+  # OpenAI /v1/chat/completions -> Anthropic /v1/messages (non-stream)
+  match api = "chat.completions" stream = false {
+    request {
+      req_map openai_chat_to_anthropic_messages;
+      json_del "$.stream_options";
+    }
+    upstream {
+      set_path "/v1/messages";
+    }
+    response {
+      resp_map anthropic_to_openai_chat;
+    }
+  }
+
+  # OpenAI /v1/chat/completions -> Anthropic /v1/messages (streaming)
+  match api = "chat.completions" stream = true {
+    request {
+      req_map openai_chat_to_anthropic_messages;
+      json_del "$.stream_options";
+    }
+    upstream {
+      set_path "/v1/messages";
+    }
+    response {
+      sse_parse anthropic_to_openai_chunks;
+    }
+  }
+}
+```
+
+More examples: `config/providers/` • Full reference: [DSL_SYNTAX.md](https://github.com/r9s-ai/open-next-router/blob/main/DSL_SYNTAX.md)
+
 ## Quick Start
+
+### One-click install (Linux, recommended)
+
+Install latest runtime release as a systemd service:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/r9s-ai/open-next-router/main/tools/install_onr_service.sh | sudo bash -s -- \
+  --mode service \
+  --api-key 'change-me'
+```
+
+Health check:
+
+```bash
+curl -sS http://127.0.0.1:3300/v1/models -H "Authorization: Bearer change-me"
+```
+
+Other install modes:
+
+- Docker: `--mode docker`
+- Docker Compose: `--mode docker-compose`
+
+### Run from source (development)
 
 1) Prepare configs
 
 - Copy `config/onr.example.yaml` -> `onr.yaml`
 - Copy `config/keys.example.yaml` -> `keys.yaml`
 - Copy `config/models.example.yaml` -> `models.yaml`
-- Provider DSL examples are under `config/providers/` (or write your own)
-- Provider DSL reference: `DSL_SYNTAX.md`
 
 2) Run
 
@@ -56,14 +158,6 @@ go run ./cmd/onr -t -c ./onr.yaml
 
 # specify config file (positional)
 go run ./cmd/onr -t ./onr.yaml
-```
-
-For more information about version management and releases, see [docs/RELEASE.md](docs/RELEASE.md).
-
-## Version
-
-```bash
-go run ./cmd/onr -V
 ```
 
 ## Docker Compose
@@ -122,10 +216,12 @@ curl -sS http://127.0.0.1:3300/v1/chat/completions \
 
 Observability:
 - [ONR] one-line request log
-    • always: request_id, status, latency, client_ip, method, path
-    • when available: api, model, provider, provider_source, stream, latency_ms
-    • when available: upstream_status, finish_reason
-    • usage (when available): usage_stage, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens
+    • base (always): ts, status, latency, client_ip, method, path
+    • fields (always): request_id, latency_ms
+    • routing (when available): api, provider, provider_source, model, stream
+    • upstream (when available): upstream_status, finish_reason
+    • usage (when available): usage_stage, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, billable_input_tokens
+    • cost (when enabled/available): cost_total, cost_input, cost_output, cost_cache_read, cost_cache_write, cost_multiplier, cost_model, cost_channel, cost_unit
         - usage_stage=upstream: usage returned by upstream
         - usage_stage=estimate_*: best-effort estimation when upstream usage is missing/zero
 
