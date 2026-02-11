@@ -208,12 +208,20 @@ curl -sS http://127.0.0.1:3300/v1/chat/completions \
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              Request Pipeline                               │
 │                                                                             │
-│  ┌───────────────┐   ┌───────────────────────┐   ┌────────────────────────┐ │
-│  │ request_id    │   │ provider selection    │   │ DSL provider execution │ │
-│  │ response hdr  │   │ 1) x-onr-provider     │   │ - routing              │ │
-│  │               │   │ 2) models.yaml        │   │ - headers/auth         │ │
-│  └───────────────┘   └───────────────────────┘   │ - request transforms   │ │
-│                                                  └────────────────────────┘ |
+│  ┌──────────────────────────────┐  ┌───────────────────────┐  ┌───────────┐ │
+│  │ request_id + access log      │  │ provider selection    │  │ DSL exec  │ │
+│  │ optional traffic dump        │  │ 1) x-onr-provider     │  │ (phases)  │ │
+│  └──────────────────────────────┘  │ 2) models.yaml        │  └───────────┘ │
+│                                    └───────────────────────┘                │
+│                                                                             │
+│  DSL phases (explicit, nginx-like):                                         │
+│  - upstream_config: base_url (and per-channel overrides)                    │
+│  - auth: auth header shape, optional OAuth exchange + bearer injection      │
+│  - request: header/query/json patching, request mapping (compat mode)       │
+│  - upstream: set_path/set_query, proxy settings                             │
+│  - response: passthrough / resp_map / sse_parse (streaming normalization)   │
+│  - error: error_map                                                         │
+│  - metrics/pricing: usage_extract, cost estimation (optional)               │
 │                                                                             │
 │                                                                             │
 │                           ┌──────────────────────────┐                      │
@@ -221,12 +229,13 @@ curl -sS http://127.0.0.1:3300/v1/chat/completions \
 │                           │ provider base_url + path │                      │
 │                           └──────────────────────────┘                      │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   ▼
-                 ┌──────────────────────────────────────────┐
-                 │                Upstream APIs             │
-                 │   OpenAI-compatible / Anthropic / etc.   │
-                 └──────────────────────────────────────────┘
+                                     │
+                                     ▼
+                   ┌──────────────────────────────────────────┐
+                   │                Upstream APIs             │
+                   │   OpenAI-compatible and native provider  │
+                   │   APIs (Anthropic, Gemini, etc.)         │
+                   └──────────────────────────────────────────┘
 
 Observability:
 - [ONR] one-line request log
@@ -244,6 +253,9 @@ Observability:
     • ORIGIN
     • UPSTREAM
     • PROXY
+
+Config reload:
+- Send SIGHUP to reload `onr.yaml` / `keys.yaml` / `models.yaml` / `config/providers/*.conf` (nginx-like)
 ```
 
 ## Auth
