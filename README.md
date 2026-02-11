@@ -2,7 +2,7 @@
 
 # onr (open-next-router)
 
-**A lightweight API gateway for routing OpenAI-compatible endpoints to multiple upstream providers**
+**A lightweight, DSL-driven API gateway for routing and transforming LLM traffic across providers**
 
 [![CI](https://github.com/r9s-ai/open-next-router/actions/workflows/ci.yml/badge.svg)](https://github.com/r9s-ai/open-next-router/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/r9s-ai/open-next-router)](https://github.com/r9s-ai/open-next-router/blob/main/go.mod)
@@ -19,7 +19,7 @@
 
 ---
 
-open-next-router (ONR) is a lightweight API gateway that routes OpenAI-style endpoints to upstream providers via declarative provider configuration (DSL).
+open-next-router (ONR) is a lightweight, DSL-driven API gateway for routing and transforming LLM traffic across providers.
 
 ## DSL (nginx-like, atomic) at a glance
 
