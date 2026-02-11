@@ -7,11 +7,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/requestid"
 	"github.com/r9s-ai/open-next-router/onr/internal/logx"
-	"github.com/r9s-ai/open-next-router/onr/internal/requestid"
 )
 
-func requestLoggerWithColor(l *log.Logger, color bool) gin.HandlerFunc {
+func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string) gin.HandlerFunc {
+	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
 	if l == nil {
 		l = log.New(os.Stdout, "", log.LstdFlags)
 	}
@@ -23,7 +24,7 @@ func requestLoggerWithColor(l *log.Logger, color bool) gin.HandlerFunc {
 		latency := time.Since(start)
 
 		fields := map[string]any{}
-		if v := c.GetString(requestid.HeaderKey); v != "" {
+		if v := c.GetString(requestIDHeaderKey); v != "" {
 			fields["request_id"] = v
 		}
 		if v, ok := c.Get("onr.provider"); ok {

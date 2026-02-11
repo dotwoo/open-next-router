@@ -44,23 +44,36 @@ type Recorder struct {
 func Enabled(cfg Config) bool { return cfg.Enabled }
 
 func RequestID(c *gin.Context) string {
+	return RequestIDWithHeaderKey(c, "")
+}
+
+func RequestIDWithHeaderKey(c *gin.Context, headerKey string) string {
 	if c == nil {
 		return ""
 	}
-	if v := strings.TrimSpace(c.GetString(requestid.HeaderKey)); v != "" {
+	headerKey = requestid.ResolveHeaderKey(headerKey)
+	if v := strings.TrimSpace(c.GetString(headerKey)); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(c.GetHeader(requestid.HeaderKey)); v != "" {
+	if v := strings.TrimSpace(c.GetHeader(headerKey)); v != "" {
 		return v
 	}
 	id := requestid.Gen()
-	c.Set(requestid.HeaderKey, id)
-	c.Header(requestid.HeaderKey, id)
+	c.Set(headerKey, id)
+	c.Header(headerKey, id)
 	return id
 }
 
 func Start(c *gin.Context, cfg Config) (*Recorder, error) {
-	return StartWithRequestID(c, cfg, "")
+	return StartWithHeaderKey(c, cfg, "")
+}
+
+func StartWithHeaderKey(c *gin.Context, cfg Config, headerKey string) (*Recorder, error) {
+	return StartWithHeaderKeyAndRequestID(c, cfg, headerKey, "")
+}
+
+func StartWithHeaderKeyAndRequestID(c *gin.Context, cfg Config, headerKey string, requestID string) (*Recorder, error) {
+	return startWithRequestIDAndHeaderKey(c, cfg, requestID, headerKey)
 }
 
 // StartWithRequestID starts a new traffic dump recorder using a provided request_id.
@@ -71,6 +84,10 @@ func Start(c *gin.Context, cfg Config) (*Recorder, error) {
 // Template variables for cfg.FilePath:
 //   - {{.request_id}} (recommended)
 func StartWithRequestID(c *gin.Context, cfg Config, requestID string) (*Recorder, error) {
+	return startWithRequestIDAndHeaderKey(c, cfg, requestID, "")
+}
+
+func startWithRequestIDAndHeaderKey(c *gin.Context, cfg Config, requestID string, headerKey string) (*Recorder, error) {
 	if c == nil {
 		return nil, errors.New("context is nil")
 	}
@@ -85,11 +102,12 @@ func StartWithRequestID(c *gin.Context, cfg Config, requestID string) (*Recorder
 	}
 
 	rid := strings.TrimSpace(requestID)
+	headerKey = requestid.ResolveHeaderKey(headerKey)
 	if rid == "" {
-		rid = RequestID(c)
+		rid = RequestIDWithHeaderKey(c, headerKey)
 	} else {
-		c.Set(requestid.HeaderKey, rid)
-		c.Header(requestid.HeaderKey, rid)
+		c.Set(headerKey, rid)
+		c.Header(headerKey, rid)
 	}
 
 	data := map[string]string{

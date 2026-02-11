@@ -33,3 +33,15 @@ func TestHelpers(t *testing.T) {
 		t.Fatalf("timeString len=%d value=%q", len(got), got)
 	}
 }
+
+func TestResolveHeaderKey(t *testing.T) {
+	if got := ResolveHeaderKey(""); got != DefaultHeaderKey {
+		t.Fatalf("ResolveHeaderKey(empty)=%q, want %q", got, DefaultHeaderKey)
+	}
+	if got := ResolveHeaderKey("  "); got != DefaultHeaderKey {
+		t.Fatalf("ResolveHeaderKey(space)=%q, want %q", got, DefaultHeaderKey)
+	}
+	if got := ResolveHeaderKey("X-Onr-Request-Id"); got != "X-Onr-Request-Id" {
+		t.Fatalf("ResolveHeaderKey(custom)=%q", got)
+	}
+}

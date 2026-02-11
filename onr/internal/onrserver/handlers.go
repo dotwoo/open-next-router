@@ -11,20 +11,21 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/config"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/requestid"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/trafficdump"
 	"github.com/r9s-ai/open-next-router/onr/internal/auth"
 	"github.com/r9s-ai/open-next-router/onr/internal/proxy"
-	"github.com/r9s-ai/open-next-router/onr/internal/requestid"
 )
 
 const openAIInvalidRequestType = "invalid_request_error"
 
-func makeHandler(cfg *config.Config, st *state, pclient *proxy.Client, api string) gin.HandlerFunc {
+func makeHandler(cfg *config.Config, st *state, pclient *proxy.Client, api string, requestIDHeaderKey string) gin.HandlerFunc {
+	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
 	return func(c *gin.Context) {
 		c.Set("onr.api", api)
 		bodyBytes, stream, model, err := peekJSONBody(c)
 		if err != nil {
-			writeOpenAIError(c, "invalid_json", err.Error())
+			writeOpenAIError(c, requestIDHeaderKey, "invalid_json", err.Error())
 			return
 		}
 		if mo := auth.TokenModelOverride(c); mo != "" {
@@ -53,6 +54,7 @@ func makeHandler(cfg *config.Config, st *state, pclient *proxy.Client, api strin
 		if provider == "" {
 			writeOpenAIError(
 				c,
+				requestIDHeaderKey,
 				"provider_not_selected",
 				"no provider selected: set x-onr-provider or configure models.yaml",
 			)
@@ -69,7 +71,7 @@ func makeHandler(cfg *config.Config, st *state, pclient *proxy.Client, api strin
 			keys := st.Keys()
 			k, ok := keys.NextKey(provider)
 			if !ok {
-				writeOpenAIError(c, "missing_upstream_key", "no upstream key for provider: "+provider)
+				writeOpenAIError(c, requestIDHeaderKey, "missing_upstream_key", "no upstream key for provider: "+provider)
 				return
 			}
 			kname = k.Name
@@ -83,7 +85,7 @@ func makeHandler(cfg *config.Config, st *state, pclient *proxy.Client, api strin
 			BaseURLOverride: kbase,
 		}, api, stream)
 		if perr != nil {
-			writeOpenAIError(c, "proxy_error", perr.Error())
+			writeOpenAIError(c, requestIDHeaderKey, "proxy_error", perr.Error())
 			return
 		}
 		setProxyResultContext(c, res)
@@ -130,9 +132,10 @@ func peekJSONBody(c *gin.Context) ([]byte, bool, string, error) {
 	return b, stream, strings.TrimSpace(model), nil
 }
 
-func writeOpenAIError(c *gin.Context, code, msg string) {
+func writeOpenAIError(c *gin.Context, requestIDHeaderKey string, code, msg string) {
+	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
 	if c != nil {
-		if rid := strings.TrimSpace(c.GetString(requestid.HeaderKey)); rid != "" {
+		if rid := strings.TrimSpace(c.GetString(requestIDHeaderKey)); rid != "" {
 			msg = msg + " (request id: " + rid + ")"
 		}
 	}

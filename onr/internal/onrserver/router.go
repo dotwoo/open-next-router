@@ -9,21 +9,30 @@ import (
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/config"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/requestid"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/trafficdump"
 	"github.com/r9s-ai/open-next-router/onr/internal/auth"
 	"github.com/r9s-ai/open-next-router/onr/internal/proxy"
-	"github.com/r9s-ai/open-next-router/onr/internal/requestid"
 )
 
-func NewRouter(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client, accessLogger *log.Logger, accessLoggerColor bool) *gin.Engine {
+func NewRouter(
+	cfg *config.Config,
+	st *state,
+	reg *dslconfig.Registry,
+	pclient *proxy.Client,
+	accessLogger *log.Logger,
+	accessLoggerColor bool,
+	requestIDHeaderKey string,
+) *gin.Engine {
+	resolvedRequestIDHeaderKey := requestid.ResolveHeaderKey(requestIDHeaderKey)
 	r := gin.New()
-	r.Use(requestIDMiddleware())
+	r.Use(requestIDMiddleware(resolvedRequestIDHeaderKey))
 	if cfg.Logging.AccessLog {
-		r.Use(requestLoggerWithColor(accessLogger, accessLoggerColor))
+		r.Use(requestLoggerWithColor(accessLogger, accessLoggerColor, resolvedRequestIDHeaderKey))
 	}
 	r.Use(gin.Recovery())
 	if cfg.TrafficDump.Enabled {
-		r.Use(trafficDumpMiddleware(cfg))
+		r.Use(trafficDumpMiddleware(cfg, resolvedRequestIDHeaderKey))
 	}
 
 	r.GET("/healthz", func(c *gin.Context) {
@@ -50,10 +59,10 @@ func NewRouter(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *
 	})
 
 	v1 := secured.Group("/v1")
-	v1.POST("/chat/completions", makeHandler(cfg, st, pclient, "chat.completions"))
-	v1.POST("/responses", makeHandler(cfg, st, pclient, "responses"))
-	v1.POST("/embeddings", makeHandler(cfg, st, pclient, "embeddings"))
-	v1.POST("/messages", makeHandler(cfg, st, pclient, "claude.messages"))
+	v1.POST("/chat/completions", makeHandler(cfg, st, pclient, "chat.completions", resolvedRequestIDHeaderKey))
+	v1.POST("/responses", makeHandler(cfg, st, pclient, "responses", resolvedRequestIDHeaderKey))
+	v1.POST("/embeddings", makeHandler(cfg, st, pclient, "embeddings", resolvedRequestIDHeaderKey))
+	v1.POST("/messages", makeHandler(cfg, st, pclient, "claude.messages", resolvedRequestIDHeaderKey))
 	v1.GET("/models", func(c *gin.Context) {
 		c.JSON(http.StatusOK, st.ModelRouter().ToOpenAIListAt(st.StartedAtUnix()))
 	})
@@ -77,24 +86,26 @@ func NewRouter(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *
 	})
 	// Gemini native API paths: /v1beta/models/{model}:generateContent
 	// (Stage 1) Only generateContent / streamGenerateContent are supported.
-	v1beta.POST("/models/*path", makeGeminiHandler(cfg, st, pclient))
+	v1beta.POST("/models/*path", makeGeminiHandler(cfg, st, pclient, resolvedRequestIDHeaderKey))
 
 	return r
 }
 
-func requestIDMiddleware() gin.HandlerFunc {
+func requestIDMiddleware(headerKey string) gin.HandlerFunc {
+	headerKey = requestid.ResolveHeaderKey(headerKey)
 	return func(c *gin.Context) {
-		id := strings.TrimSpace(c.GetHeader(requestid.HeaderKey))
+		id := strings.TrimSpace(c.GetHeader(headerKey))
 		if id == "" {
 			id = requestid.Gen()
 		}
-		c.Header(requestid.HeaderKey, id)
-		c.Set(requestid.HeaderKey, id)
+		c.Header(headerKey, id)
+		c.Set(headerKey, id)
 		c.Next()
 	}
 }
 
-func trafficDumpMiddleware(cfg *config.Config) gin.HandlerFunc {
+func trafficDumpMiddleware(cfg *config.Config, requestIDHeaderKey string) gin.HandlerFunc {
+	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
 	tdcfg := trafficdump.Config{
 		Enabled:     cfg.TrafficDump.Enabled,
 		Dir:         cfg.TrafficDump.Dir,
@@ -103,7 +114,7 @@ func trafficDumpMiddleware(cfg *config.Config) gin.HandlerFunc {
 		MaskSecrets: cfg.TrafficDump.MaskSecrets,
 	}
 	return func(c *gin.Context) {
-		rec, err := trafficdump.Start(c, tdcfg)
+		rec, err := trafficdump.StartWithHeaderKey(c, tdcfg, requestIDHeaderKey)
 		if err != nil {
 			c.Next()
 			return

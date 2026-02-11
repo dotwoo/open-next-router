@@ -93,7 +93,7 @@ func Run(cfgPath string) error {
 
 	installReloadSignalHandler(cfg, st, reg, pclient)
 
-	engine := NewRouter(cfg, st, reg, pclient, accessLogger, accessColor)
+	engine := NewRouter(cfg, st, reg, pclient, accessLogger, accessColor, "X-Onr-Request-Id")
 
 	log.Printf("open-next-router listening on %s", cfg.Server.Listen)
 	if err := engine.Run(cfg.Server.Listen); err != nil {

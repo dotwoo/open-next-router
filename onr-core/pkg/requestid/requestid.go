@@ -7,7 +7,19 @@ import (
 	"time"
 )
 
-const HeaderKey = "X-Request-Id"
+const DefaultHeaderKey = "X-Request-Id"
+
+// HeaderKey keeps backward compatibility for callers that used the old constant.
+const HeaderKey = DefaultHeaderKey
+
+// ResolveHeaderKey returns the provided header key when non-empty,
+// otherwise falls back to the default request id header key.
+func ResolveHeaderKey(headerKey string) string {
+	if v := strings.TrimSpace(headerKey); v != "" {
+		return v
+	}
+	return DefaultHeaderKey
+}
 
 // Gen generates a request_id compatible with next-router:
 // yyyymmddHHMMSSuuuuuu + 8 random digits.
