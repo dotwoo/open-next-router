@@ -2,7 +2,7 @@
 
 # onr (open-next-router)
 
-**A lightweight, DSL-driven API gateway for routing and transforming LLM traffic across providers**
+**A lightweight, DSL-driven LLM gateway for routing, patching provider quirks, and enforcing consistent APIs across channels**
 
 [![CI](https://github.com/r9s-ai/open-next-router/actions/workflows/ci.yml/badge.svg)](https://github.com/r9s-ai/open-next-router/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/r9s-ai/open-next-router)](https://github.com/r9s-ai/open-next-router/blob/main/go.mod)
@@ -19,7 +19,7 @@
 
 ---
 
-open-next-router (ONR) is a lightweight, DSL-driven API gateway for routing and transforming LLM traffic across providers.
+open-next-router (ONR) is a lightweight, DSL-driven LLM gateway that routes requests, applies compatibility patches, and normalizes behavior across providers and channels.
 
 ## DSL (nginx-like, atomic) at a glance
 
