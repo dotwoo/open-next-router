@@ -21,6 +21,15 @@
 
 open-next-router (ONR) is a lightweight, DSL-driven LLM gateway that routes requests, applies compatibility patches, and normalizes behavior across providers and channels.
 
+## Why ONR?
+
+- **Atomic, nginx-like DSL**: runtime behavior is explicitly declared in `config/providers/*.conf` (routing, auth headers, transforms, SSE parsing, usage extraction).
+- **Fast provider onboarding and patching**: fix provider quirks by editing a `.conf` file instead of changing and redeploying code.
+- **Hot reload**: reload `onr.yaml` / `keys.yaml` / `models.yaml` / provider DSL files via SIGHUP, minimizing downtime.
+- **No hidden magic**: compatibility is opt-in via directives (e.g. `req_map`, `resp_map`, `sse_parse`, `json_del`, `set_header`) rather than implicit heuristics.
+- **Streaming-aware normalization**: handle SSE framing and provider-specific streaming semantics while keeping a stable client-facing API.
+- **Operational visibility**: one-line request logs with optional usage/cost extraction help you debug channels and control spend.
+
 ## DSL (nginx-like, atomic) at a glance
 
 All runtime behavior (routing, auth headers, request/response transforms, SSE parsing, usage extraction, etc.) is explicitly described
