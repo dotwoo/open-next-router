@@ -14,6 +14,10 @@ import (
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
 )
 
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type Params struct {
 	Provider string
 	File     dslconfig.ProviderFile
@@ -21,7 +25,7 @@ type Params struct {
 	BaseURL  string
 	APIKey   string
 
-	HTTPClient *http.Client
+	HTTPClient HTTPDoer
 	DebugOut   io.Writer
 }
 
@@ -93,7 +97,7 @@ func Query(ctx context.Context, p Params) (Result, error) {
 	}, nil
 }
 
-func getResponseBody(ctx context.Context, client *http.Client, method, reqURL string, headers http.Header, debugOut io.Writer) ([]byte, error) {
+func getResponseBody(ctx context.Context, client HTTPDoer, method, reqURL string, headers http.Header, debugOut io.Writer) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, http.NoBody)
 	if err != nil {
 		return nil, err

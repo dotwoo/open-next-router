@@ -16,6 +16,10 @@ import (
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
 )
 
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type Params struct {
 	Provider string
 	File     dslconfig.ProviderFile
@@ -23,7 +27,7 @@ type Params struct {
 	BaseURL  string
 	APIKey   string
 
-	HTTPClient *http.Client
+	HTTPClient HTTPDoer
 	DebugOut   io.Writer
 }
 
@@ -117,7 +121,7 @@ func Query(ctx context.Context, p Params) (Result, error) {
 	}, nil
 }
 
-func queryCustomBalance(ctx context.Context, client *http.Client, baseURL string, cfg dslconfig.BalanceQueryConfig, headers http.Header, debugOut io.Writer) (float64, *float64, error) {
+func queryCustomBalance(ctx context.Context, client HTTPDoer, baseURL string, cfg dslconfig.BalanceQueryConfig, headers http.Header, debugOut io.Writer) (float64, *float64, error) {
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method == "" {
 		method = http.MethodGet
@@ -133,7 +137,7 @@ func queryCustomBalance(ctx context.Context, client *http.Client, baseURL string
 	return dslconfig.ExtractBalance(cfg, body)
 }
 
-func queryOpenAIBalanceWithPaths(ctx context.Context, client *http.Client, baseURL, apiKey, subscriptionPath, usagePath string, baseHeaders http.Header, debugOut io.Writer) (float64, *float64, error) {
+func queryOpenAIBalanceWithPaths(ctx context.Context, client HTTPDoer, baseURL, apiKey, subscriptionPath, usagePath string, baseHeaders http.Header, debugOut io.Writer) (float64, *float64, error) {
 	subURL, err := buildBalanceRequestURL(baseURL, "/v1/dashboard/billing/subscription", subscriptionPath)
 	if err != nil {
 		return 0, nil, err
@@ -190,7 +194,7 @@ func queryOpenAIBalanceWithPaths(ctx context.Context, client *http.Client, baseU
 	return balance, &used, nil
 }
 
-func getResponseBody(ctx context.Context, client *http.Client, method, reqURL string, headers http.Header, debugOut io.Writer) ([]byte, error) {
+func getResponseBody(ctx context.Context, client HTTPDoer, method, reqURL string, headers http.Header, debugOut io.Writer) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, http.NoBody)
 	if err != nil {
 		return nil, err
