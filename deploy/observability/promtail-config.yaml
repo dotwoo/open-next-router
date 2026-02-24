@@ -32,6 +32,8 @@ scrape_configs:
             model:
             stream:
             latency_ms:
+            ttft_ms:
+            tps:
             upstream_status:
             finish_reason:
             usage_stage:

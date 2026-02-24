@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -16,11 +17,15 @@ import (
 )
 
 type countingWriter struct {
-	n int64
-	w io.Writer
+	n            int64
+	w            io.Writer
+	firstWriteAt time.Time
 }
 
 func (w *countingWriter) Write(p []byte) (int, error) {
+	if w.firstWriteAt.IsZero() && len(p) > 0 {
+		w.firstWriteAt = time.Now()
+	}
 	n, err := w.w.Write(p)
 	w.n += int64(n)
 	return n, err
@@ -33,7 +38,7 @@ func streamToDownstream(
 	resp *http.Response,
 	usageTail *tailBuffer,
 	dump *streamDumpState,
-) (int64, error) {
+) (int64, time.Time, error) {
 	needSSEOps := len(respDir.JSONOps) > 0 || len(respDir.SSEJSONDelIf) > 0
 	mode := strings.ToLower(strings.TrimSpace(respDir.Mode))
 	useStrategyTransform := strings.TrimSpace(respDir.Op) == "sse_parse" &&
@@ -54,7 +59,7 @@ func streamToDownstream(
 
 	src, err := buildStreamSource(gc, resp, mode, respDir.Mode, needSSEOps, useStrategyTransform, upstreamDump)
 	if err != nil {
-		return 0, err
+		return 0, time.Time{}, err
 	}
 
 	if upstreamDump != nil && !useStrategyTransform {
@@ -87,7 +92,7 @@ func streamToDownstream(
 		dump.SetProxy(proxyDump.Bytes(), proxyDump.Truncated())
 	}
 
-	return cw.n, err
+	return cw.n, cw.firstWriteAt, err
 }
 
 func buildStreamSource(

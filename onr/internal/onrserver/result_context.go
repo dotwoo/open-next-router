@@ -13,6 +13,12 @@ func setProxyResultContext(c *gin.Context, res *proxy.Result) {
 		return
 	}
 	c.Set("onr.latency_ms", res.LatencyMs)
+	if res.TTFTMs > 0 {
+		c.Set("onr.ttft_ms", res.TTFTMs)
+	}
+	if res.TPS > 0 {
+		c.Set("onr.tps", res.TPS)
+	}
 	if res.Status > 0 {
 		c.Set("onr.upstream_status", res.Status)
 	}

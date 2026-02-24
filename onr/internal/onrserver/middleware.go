@@ -106,6 +106,12 @@ func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string
 		if v, ok := c.Get("onr.finish_reason"); ok {
 			fields["finish_reason"] = v
 		}
+		if v, ok := c.Get("onr.ttft_ms"); ok {
+			fields["ttft_ms"] = v
+		}
+		if v, ok := c.Get("onr.tps"); ok {
+			fields["tps"] = v
+		}
 
 		l.Println(logx.FormatRequestLineWithColor(time.Now(), status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
 	}

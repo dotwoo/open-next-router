@@ -129,3 +129,35 @@ func TestRequestLoggerWithColor_UsesUnknownWhenEnabled(t *testing.T) {
 		t.Fatalf("expected unknown fallback appname in log, got=%q", logLine)
 	}
 }
+
+func TestRequestLoggerWithColor_LogsTTFTAndTPS(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var out bytes.Buffer
+	l := log.New(&out, "", 0)
+	requestIDHeaderKey := "X-Onr-Request-Id"
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(requestIDHeaderKey, "rid-1")
+		c.Set("onr.ttft_ms", int64(123))
+		c.Set("onr.tps", 45.67)
+		c.Next()
+	})
+	r.Use(requestLoggerWithColor(l, false, requestIDHeaderKey, false, ""))
+	r.GET("/v1/models", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	logLine := out.String()
+	if !strings.Contains(logLine, "ttft_ms=123") {
+		t.Fatalf("expected ttft_ms in log, got=%q", logLine)
+	}
+	if !strings.Contains(logLine, "tps=45.67") {
+		t.Fatalf("expected tps in log, got=%q", logLine)
+	}
+}

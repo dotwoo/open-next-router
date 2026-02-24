@@ -57,3 +57,24 @@ func TestSetProxyResultContext_InputTokensPassThrough(t *testing.T) {
 		}
 	})
 }
+
+func TestSetProxyResultContext_StreamPerfFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	setProxyResultContext(c, &proxy.Result{
+		Status:    http.StatusOK,
+		TTFTMs:    321,
+		TPS:       12.5,
+		LatencyMs: 1000,
+	})
+
+	if v, ok := c.Get("onr.ttft_ms"); !ok || v != int64(321) {
+		t.Fatalf("expected ttft_ms=321, got ok=%v value=%v", ok, v)
+	}
+	if v, ok := c.Get("onr.tps"); !ok || v != 12.5 {
+		t.Fatalf("expected tps=12.5, got ok=%v value=%v", ok, v)
+	}
+}
