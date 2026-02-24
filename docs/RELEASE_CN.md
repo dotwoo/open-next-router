@@ -13,7 +13,7 @@ make version
 或运行程序查看版本：
 
 ```bash
-./bin/onr --version
+onr --version
 ```
 
 ### 创建新版本发布
@@ -229,7 +229,7 @@ make build
 make version
 
 # 运行
-./bin/onr --version
+onr --version
 ```
 
 ---

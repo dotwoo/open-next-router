@@ -289,7 +289,7 @@ Generate a token key:
 
 ```bash
 make build
-./bin/onr-admin token create \
+onr-admin token create \
   --config ./onr.yaml \
   --access-key-name client-a \
   --provider openai \
@@ -316,7 +316,7 @@ To generate an encrypted value:
 
 ```bash
 export ONR_MASTER_KEY='...'
-echo -n 'sk-xxxx' | ./bin/onr-admin crypto encrypt
+echo -n 'sk-xxxx' | onr-admin crypto encrypt
 ```
 
 ### Env override (recommended for CI / docker / k8s)

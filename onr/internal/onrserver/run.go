@@ -49,9 +49,11 @@ func Run(cfgPath string) error {
 	}
 
 	reg := dslconfig.NewRegistry()
-	if _, err := reg.ReloadFromDir(cfg.Providers.Dir); err != nil {
+	loadRes, err := reg.ReloadFromDir(cfg.Providers.Dir)
+	if err != nil {
 		return fmt.Errorf("load providers dir %q: %w", cfg.Providers.Dir, err)
 	}
+	logSkippedProviders(cfg.Providers.Dir, loadRes.SkippedFiles, false)
 
 	keys, err := keystore.Load(cfg.Keys.File)
 	if err != nil {
@@ -193,9 +195,11 @@ func reloadRuntime(cfg *config.Config, st *state, reg *dslconfig.Registry, pclie
 	if cfg == nil || st == nil || reg == nil || pclient == nil {
 		return errors.New("reload: nil cfg/state/registry/pclient")
 	}
-	if _, err := reg.ReloadFromDir(cfg.Providers.Dir); err != nil {
+	loadRes, err := reg.ReloadFromDir(cfg.Providers.Dir)
+	if err != nil {
 		return fmt.Errorf("reload providers dir %q: %w", cfg.Providers.Dir, err)
 	}
+	logSkippedProviders(cfg.Providers.Dir, loadRes.SkippedFiles, true)
 	ks, err := keystore.Load(cfg.Keys.File)
 	if err != nil {
 		return fmt.Errorf("reload keys file %q: %w", cfg.Keys.File, err)
@@ -213,4 +217,19 @@ func reloadRuntime(cfg *config.Config, st *state, reg *dslconfig.Registry, pclie
 	pclient.SetPricingResolver(pricingResolver)
 	pclient.SetPricingEnabled(cfg.Pricing.Enabled)
 	return nil
+}
+
+func logSkippedProviders(providersDir string, skipped []string, reloading bool) {
+	if len(skipped) == 0 {
+		return
+	}
+	phase := "load"
+	if reloading {
+		phase = "reload"
+	}
+	warn := "WARNING"
+	if logx.ColorEnabled() {
+		warn = "\x1b[1;33mWARNING\x1b[0m"
+	}
+	log.Printf("[ONR] %s [providers/%s] dir=%q skipped_invalid_files=%s", warn, phase, providersDir, strings.Join(skipped, ", "))
 }
