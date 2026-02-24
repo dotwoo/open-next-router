@@ -46,3 +46,45 @@ func TestCompileAccessLogFormat(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveAccessLogFormat(t *testing.T) {
+	t.Run("custom format takes precedence over preset", func(t *testing.T) {
+		got, err := ResolveAccessLogFormat("$method $path", "onr_minimal")
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got != "$method $path" {
+			t.Fatalf("unexpected format: %q", got)
+		}
+	})
+
+	t.Run("preset resolves when custom format empty", func(t *testing.T) {
+		got, err := ResolveAccessLogFormat("  ", "onr_minimal")
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if strings.TrimSpace(got) == "" {
+			t.Fatalf("expected preset format")
+		}
+		if !strings.Contains(got, "$request_id") {
+			t.Fatalf("expected preset format to include request id, got=%q", got)
+		}
+	})
+
+	t.Run("unknown preset fails", func(t *testing.T) {
+		_, err := ResolveAccessLogFormat("", "not-exist")
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("empty format and preset returns empty", func(t *testing.T) {
+		got, err := ResolveAccessLogFormat("", "")
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got != "" {
+			t.Fatalf("expected empty format, got=%q", got)
+		}
+	})
+}

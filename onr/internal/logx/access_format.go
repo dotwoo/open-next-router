@@ -17,6 +17,11 @@ type AccessLogFormatter struct {
 	parts []formatPart
 }
 
+var accessLogFormatPresets = map[string]string{
+	"onr_combined": "$time_local | $status | $latency | $client_ip | $method $path | request_id=$request_id appname=$appname provider=$provider provider_source=$provider_source api=$api stream=$stream model=$model usage_stage=$usage_stage input_tokens=$input_tokens output_tokens=$output_tokens total_tokens=$total_tokens cache_read_tokens=$cache_read_tokens cache_write_tokens=$cache_write_tokens cost_total=$cost_total cost_input=$cost_input cost_output=$cost_output cost_cache_read=$cost_cache_read cost_cache_write=$cost_cache_write billable_input_tokens=$billable_input_tokens cost_multiplier=$cost_multiplier cost_model=$cost_model cost_channel=$cost_channel cost_unit=$cost_unit upstream_status=$upstream_status finish_reason=$finish_reason ttft_ms=$ttft_ms tps=$tps",
+	"onr_minimal":  "$time_local | $status | $latency | $method $path | request_id=$request_id appname=$appname provider=$provider model=$model total_tokens=$total_tokens cost_total=$cost_total",
+}
+
 var allowedAccessLogVars = map[string]struct{}{
 	"time_local":            {},
 	"status":                {},
@@ -52,6 +57,21 @@ var allowedAccessLogVars = map[string]struct{}{
 	"finish_reason":         {},
 	"ttft_ms":               {},
 	"tps":                   {},
+}
+
+func ResolveAccessLogFormat(format string, preset string) (string, error) {
+	if strings.TrimSpace(format) != "" {
+		return format, nil
+	}
+	p := strings.ToLower(strings.TrimSpace(preset))
+	if p == "" {
+		return "", nil
+	}
+	out, ok := accessLogFormatPresets[p]
+	if !ok {
+		return "", fmt.Errorf("invalid access_log_format_preset: %q", preset)
+	}
+	return out, nil
 }
 
 func CompileAccessLogFormat(format string) (*AccessLogFormatter, error) {

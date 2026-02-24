@@ -94,7 +94,11 @@ func Run(cfgPath string) error {
 
 	installReloadSignalHandler(cfg, st, reg, pclient)
 
-	accessFormatter, err := logx.CompileAccessLogFormat(cfg.Logging.AccessLogFormat)
+	accessFormat, err := logx.ResolveAccessLogFormat(cfg.Logging.AccessLogFormat, cfg.Logging.AccessLogFormatPreset)
+	if err != nil {
+		return fmt.Errorf("resolve access log format: %w", err)
+	}
+	accessFormatter, err := logx.CompileAccessLogFormat(accessFormat)
 	if err != nil {
 		return fmt.Errorf("compile access_log_format: %w", err)
 	}
