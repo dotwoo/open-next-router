@@ -20,6 +20,7 @@ import (
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/keystore"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/models"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/pricing"
+	"github.com/r9s-ai/open-next-router/onr/internal/logx"
 	"github.com/r9s-ai/open-next-router/onr/internal/proxy"
 )
 
@@ -93,7 +94,11 @@ func Run(cfgPath string) error {
 
 	installReloadSignalHandler(cfg, st, reg, pclient)
 
-	engine := NewRouter(cfg, st, reg, pclient, accessLogger, accessColor, "X-Onr-Request-Id")
+	accessFormatter, err := logx.CompileAccessLogFormat(cfg.Logging.AccessLogFormat)
+	if err != nil {
+		return fmt.Errorf("compile access_log_format: %w", err)
+	}
+	engine := NewRouter(cfg, st, reg, pclient, accessLogger, accessColor, "X-Onr-Request-Id", accessFormatter)
 
 	log.Printf("open-next-router listening on %s", cfg.Server.Listen)
 	if err := engine.Run(cfg.Server.Listen); err != nil {

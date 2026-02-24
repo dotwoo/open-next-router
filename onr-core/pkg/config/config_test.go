@@ -61,6 +61,7 @@ upstream_proxies:
 	t.Setenv("ONR_TRAFFIC_DUMP_MASK_SECRETS", "off")
 	t.Setenv("ONR_UPSTREAM_PROXY_OPENAI", "http://127.0.0.1:8888")
 	t.Setenv("ONR_UPSTREAM_PROXY_QWEN", "")
+	t.Setenv("ONR_ACCESS_LOG_FORMAT", "$method $path")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -86,6 +87,9 @@ upstream_proxies:
 	}
 	if _, ok := cfg.UpstreamProxies.ByProvider["qwen"]; ok {
 		t.Fatalf("qwen proxy should be removed by empty env override")
+	}
+	if cfg.Logging.AccessLogFormat != "$method $path" {
+		t.Fatalf("access_log_format not overridden: %q", cfg.Logging.AccessLogFormat)
 	}
 }
 

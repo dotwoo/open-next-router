@@ -13,7 +13,62 @@ import (
 	"github.com/r9s-ai/open-next-router/onr/internal/logx"
 )
 
-func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string, appnameInferEnabled bool, appnameInferUnknown string) gin.HandlerFunc {
+type contextFieldSpec struct {
+	ctxKey string
+	logKey string
+}
+
+type accessLogRecord struct {
+	RequestID string
+	AppName   string
+	LatencyMS int64
+	Extras    map[string]any
+}
+
+func (r accessLogRecord) Fields() map[string]any {
+	out := make(map[string]any, len(r.Extras)+3)
+	if strings.TrimSpace(r.RequestID) != "" {
+		out["request_id"] = r.RequestID
+	}
+	if strings.TrimSpace(r.AppName) != "" {
+		out["appname"] = r.AppName
+	}
+	out["latency_ms"] = r.LatencyMS
+	for k, v := range r.Extras {
+		out[k] = v
+	}
+	return out
+}
+
+var accessLogContextFieldSpecs = []contextFieldSpec{
+	{ctxKey: "onr.provider", logKey: "provider"},
+	{ctxKey: "onr.provider_source", logKey: "provider_source"},
+	{ctxKey: "onr.api", logKey: "api"},
+	{ctxKey: "onr.stream", logKey: "stream"},
+	{ctxKey: "onr.model", logKey: "model"},
+	{ctxKey: "onr.usage_stage", logKey: "usage_stage"},
+	{ctxKey: "onr.usage_input_tokens", logKey: "input_tokens"},
+	{ctxKey: "onr.usage_output_tokens", logKey: "output_tokens"},
+	{ctxKey: "onr.usage_total_tokens", logKey: "total_tokens"},
+	{ctxKey: "onr.usage_cache_read_tokens", logKey: "cache_read_tokens"},
+	{ctxKey: "onr.usage_cache_write_tokens", logKey: "cache_write_tokens"},
+	{ctxKey: "onr.cost_total", logKey: "cost_total"},
+	{ctxKey: "onr.cost_input", logKey: "cost_input"},
+	{ctxKey: "onr.cost_output", logKey: "cost_output"},
+	{ctxKey: "onr.cost_cache_read", logKey: "cost_cache_read"},
+	{ctxKey: "onr.cost_cache_write", logKey: "cost_cache_write"},
+	{ctxKey: "onr.billable_input_tokens", logKey: "billable_input_tokens"},
+	{ctxKey: "onr.cost_multiplier", logKey: "cost_multiplier"},
+	{ctxKey: "onr.cost_model", logKey: "cost_model"},
+	{ctxKey: "onr.cost_channel", logKey: "cost_channel"},
+	{ctxKey: "onr.cost_unit", logKey: "cost_unit"},
+	{ctxKey: "onr.upstream_status", logKey: "upstream_status"},
+	{ctxKey: "onr.finish_reason", logKey: "finish_reason"},
+	{ctxKey: "onr.ttft_ms", logKey: "ttft_ms"},
+	{ctxKey: "onr.tps", logKey: "tps"},
+}
+
+func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string, appnameInferEnabled bool, appnameInferUnknown string, accessFormatter *logx.AccessLogFormatter) gin.HandlerFunc {
 	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
 	if l == nil {
 		l = log.New(os.Stdout, "", log.LstdFlags)
@@ -24,96 +79,44 @@ func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string
 
 		status := c.Writer.Status()
 		latency := time.Since(start)
+		rec := buildAccessLogRecord(c, requestIDHeaderKey, appnameInferEnabled, appnameInferUnknown, latency)
+		fields := rec.Fields()
 
-		fields := map[string]any{}
-		if v := c.GetString(requestIDHeaderKey); v != "" {
-			fields["request_id"] = v
+		ts := time.Now()
+		if accessFormatter != nil {
+			l.Println(accessFormatter.Format(ts, status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
+			return
 		}
-		if appname := resolveAppNameForLog(c, appnameInferEnabled, appnameInferUnknown); appname != "" {
-			fields["appname"] = appname
-		}
-		if v, ok := c.Get("onr.provider"); ok {
-			fields["provider"] = v
-		}
-		if v, ok := c.Get("onr.provider_source"); ok {
-			fields["provider_source"] = v
-		}
-		if v, ok := c.Get("onr.api"); ok {
-			fields["api"] = v
-		}
-		if v, ok := c.Get("onr.stream"); ok {
-			fields["stream"] = v
-		}
-		if v, ok := c.Get("onr.model"); ok {
-			fields["model"] = v
-		}
-		if v, ok := c.Get("onr.usage_stage"); ok {
-			fields["usage_stage"] = v
-		}
-		if v, ok := c.Get("onr.usage_input_tokens"); ok {
-			fields["input_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_output_tokens"); ok {
-			fields["output_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_total_tokens"); ok {
-			fields["total_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_cache_read_tokens"); ok {
-			fields["cache_read_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_cache_write_tokens"); ok {
-			fields["cache_write_tokens"] = v
-		}
-		if v, ok := c.Get("onr.cost_total"); ok {
-			fields["cost_total"] = v
-		}
-		if v, ok := c.Get("onr.cost_input"); ok {
-			fields["cost_input"] = v
-		}
-		if v, ok := c.Get("onr.cost_output"); ok {
-			fields["cost_output"] = v
-		}
-		if v, ok := c.Get("onr.cost_cache_read"); ok {
-			fields["cost_cache_read"] = v
-		}
-		if v, ok := c.Get("onr.cost_cache_write"); ok {
-			fields["cost_cache_write"] = v
-		}
-		if v, ok := c.Get("onr.billable_input_tokens"); ok {
-			fields["billable_input_tokens"] = v
-		}
-		if v, ok := c.Get("onr.cost_multiplier"); ok {
-			fields["cost_multiplier"] = v
-		}
-		if v, ok := c.Get("onr.cost_model"); ok {
-			fields["cost_model"] = v
-		}
-		if v, ok := c.Get("onr.cost_channel"); ok {
-			fields["cost_channel"] = v
-		}
-		if v, ok := c.Get("onr.cost_unit"); ok {
-			fields["cost_unit"] = v
-		}
-		if v, ok := c.Get("onr.latency_ms"); ok {
-			fields["latency_ms"] = v
-		} else {
-			fields["latency_ms"] = latency.Milliseconds()
-		}
-		if v, ok := c.Get("onr.upstream_status"); ok {
-			fields["upstream_status"] = v
-		}
-		if v, ok := c.Get("onr.finish_reason"); ok {
-			fields["finish_reason"] = v
-		}
-		if v, ok := c.Get("onr.ttft_ms"); ok {
-			fields["ttft_ms"] = v
-		}
-		if v, ok := c.Get("onr.tps"); ok {
-			fields["tps"] = v
-		}
+		l.Println(logx.FormatRequestLineWithColor(ts, status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
+	}
+}
 
-		l.Println(logx.FormatRequestLineWithColor(time.Now(), status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
+func buildAccessLogRecord(c *gin.Context, requestIDHeaderKey string, appnameInferEnabled bool, appnameInferUnknown string, latency time.Duration) accessLogRecord {
+	rec := accessLogRecord{
+		RequestID: c.GetString(requestIDHeaderKey),
+		AppName:   resolveAppNameForLog(c, appnameInferEnabled, appnameInferUnknown),
+		LatencyMS: latency.Milliseconds(),
+		Extras:    map[string]any{},
+	}
+	if v, ok := c.Get("onr.latency_ms"); ok {
+		switch n := v.(type) {
+		case int64:
+			rec.LatencyMS = n
+		case int:
+			rec.LatencyMS = int64(n)
+		default:
+			rec.Extras["latency_ms"] = v
+		}
+	}
+	copyContextFieldsBySpec(c, rec.Extras, accessLogContextFieldSpecs)
+	return rec
+}
+
+func copyContextFieldsBySpec(c *gin.Context, dst map[string]any, specs []contextFieldSpec) {
+	for _, s := range specs {
+		if v, ok := c.Get(s.ctxKey); ok {
+			dst[s.logKey] = v
+		}
 	}
 }
 

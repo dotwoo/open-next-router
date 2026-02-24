@@ -12,6 +12,7 @@ import (
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/requestid"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/trafficdump"
 	"github.com/r9s-ai/open-next-router/onr/internal/auth"
+	"github.com/r9s-ai/open-next-router/onr/internal/logx"
 	"github.com/r9s-ai/open-next-router/onr/internal/proxy"
 )
 
@@ -23,6 +24,7 @@ func NewRouter(
 	accessLogger *log.Logger,
 	accessLoggerColor bool,
 	requestIDHeaderKey string,
+	accessFormatter *logx.AccessLogFormatter,
 ) *gin.Engine {
 	resolvedRequestIDHeaderKey := requestid.ResolveHeaderKey(requestIDHeaderKey)
 	r := gin.New()
@@ -34,6 +36,7 @@ func NewRouter(
 			resolvedRequestIDHeaderKey,
 			cfg.Logging.AppNameInfer.Enabled,
 			cfg.Logging.AppNameInfer.Unknown,
+			accessFormatter,
 		))
 	}
 	r.Use(gin.Recovery())
