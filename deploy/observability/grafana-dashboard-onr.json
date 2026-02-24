@@ -206,6 +206,84 @@
       ],
       "title": "Tokens by Type",
       "type": "bargauge"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "unit": "short"},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "tokens"}, "properties": [{"id": "unit", "value": "short"}]},
+          {"matcher": {"id": "byName", "options": "cost"}, "properties": [{"id": "unit", "value": "currencyUSD"}]}
+        ]
+      },
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 54},
+      "id": 16,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "targets": [
+        {
+          "expr": "topk(10, sum by (model) (sum_over_time({job=\"onr-access\"} | logfmt | model!=\"\" | unwrap total_tokens [$__range])))",
+          "queryType": "instant",
+          "refId": "A"
+        },
+        {
+          "expr": "(sum by (model) (sum_over_time({job=\"onr-access\"} | logfmt | model!=\"\" | unwrap cost_total [$__range]))) and on(model) topk(10, sum by (model) (sum_over_time({job=\"onr-access\"} | logfmt | model!=\"\" | unwrap total_tokens [$__range])))",
+          "queryType": "instant",
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {"id": "labelsToFields", "options": {"mode": "columns"}},
+        {"id": "merge", "options": {}},
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "indexByName": {"model": 0, "Value #A": 1, "Value #B": 2},
+            "renameByName": {"Value #A": "tokens", "Value #B": "cost"}
+          }
+        }
+      ],
+      "title": "Top Models by Tokens",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "unit": "short"},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "tokens"}, "properties": [{"id": "unit", "value": "short"}]},
+          {"matcher": {"id": "byName", "options": "cost"}, "properties": [{"id": "unit", "value": "currencyUSD"}]}
+        ]
+      },
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 54},
+      "id": 17,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "targets": [
+        {
+          "expr": "topk(10, sum by (cost_channel) (sum_over_time({job=\"onr-access\"} | logfmt | cost_channel!=\"\" | unwrap total_tokens [$__range])))",
+          "queryType": "instant",
+          "refId": "A"
+        },
+        {
+          "expr": "(sum by (cost_channel) (sum_over_time({job=\"onr-access\"} | logfmt | cost_channel!=\"\" | unwrap cost_total [$__range]))) and on(cost_channel) topk(10, sum by (cost_channel) (sum_over_time({job=\"onr-access\"} | logfmt | cost_channel!=\"\" | unwrap total_tokens [$__range])))",
+          "queryType": "instant",
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {"id": "labelsToFields", "options": {"mode": "columns"}},
+        {"id": "merge", "options": {}},
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "indexByName": {"cost_channel": 0, "Value #A": 1, "Value #B": 2},
+            "renameByName": {"Value #A": "tokens", "Value #B": "cost"}
+          }
+        }
+      ],
+      "title": "Top Channels by Tokens",
+      "type": "table"
     }
   ],
   "refresh": "10s",
