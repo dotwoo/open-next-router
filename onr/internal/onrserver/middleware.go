@@ -8,11 +8,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/appnameinfer"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/requestid"
 	"github.com/r9s-ai/open-next-router/onr/internal/logx"
 )
 
-func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string) gin.HandlerFunc {
+func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string, appnameInferEnabled bool, appnameInferUnknown string) gin.HandlerFunc {
 	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
 	if l == nil {
 		l = log.New(os.Stdout, "", log.LstdFlags)
@@ -28,8 +29,8 @@ func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string
 		if v := c.GetString(requestIDHeaderKey); v != "" {
 			fields["request_id"] = v
 		}
-		if v := strings.TrimSpace(c.GetHeader("appname")); v != "" {
-			fields["appname"] = v
+		if appname := resolveAppNameForLog(c, appnameInferEnabled, appnameInferUnknown); appname != "" {
+			fields["appname"] = appname
 		}
 		if v, ok := c.Get("onr.provider"); ok {
 			fields["provider"] = v
@@ -108,4 +109,20 @@ func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string
 
 		l.Println(logx.FormatRequestLineWithColor(time.Now(), status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
 	}
+}
+
+func resolveAppNameForLog(c *gin.Context, inferEnabled bool, inferUnknown string) string {
+	if c == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(c.GetHeader("appname")); v != "" {
+		return v
+	}
+	if !inferEnabled {
+		return ""
+	}
+	if v, ok := appnameinfer.Infer(c.GetHeader("User-Agent")); ok {
+		return v
+	}
+	return strings.TrimSpace(inferUnknown)
 }

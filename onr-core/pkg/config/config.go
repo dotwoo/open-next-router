@@ -72,6 +72,10 @@ type Config struct {
 		Level         string `yaml:"level"`
 		AccessLog     bool   `yaml:"access_log"`
 		AccessLogPath string `yaml:"access_log_path"`
+		AppNameInfer  struct {
+			Enabled bool   `yaml:"enabled"`
+			Unknown string `yaml:"unknown"`
+		} `yaml:"appname_infer"`
 	} `yaml:"logging"`
 }
 

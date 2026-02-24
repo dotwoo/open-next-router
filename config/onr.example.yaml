@@ -67,5 +67,10 @@ logging:
   # Access log output (nginx-like):
   # - access_log: enable/disable
   # - access_log_path: if set, append logs to this file; otherwise output to stdout
+  # - appname_infer.enabled: infer appname from User-Agent when request header `appname` is missing
+  # - appname_infer.unknown: fallback appname when inference misses; empty means omit appname field
   access_log: true
   access_log_path: ""
+  appname_infer:
+    enabled: false
+    unknown: ""

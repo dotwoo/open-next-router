@@ -36,6 +36,9 @@ auth:
 	if !cfg.Logging.AccessLog {
 		t.Fatalf("access_log default should be true")
 	}
+	if cfg.Logging.AppNameInfer.Enabled {
+		t.Fatalf("logging.appname_infer.enabled default should be false")
+	}
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {

@@ -28,7 +28,13 @@ func NewRouter(
 	r := gin.New()
 	r.Use(requestIDMiddleware(resolvedRequestIDHeaderKey))
 	if cfg.Logging.AccessLog {
-		r.Use(requestLoggerWithColor(accessLogger, accessLoggerColor, resolvedRequestIDHeaderKey))
+		r.Use(requestLoggerWithColor(
+			accessLogger,
+			accessLoggerColor,
+			resolvedRequestIDHeaderKey,
+			cfg.Logging.AppNameInfer.Enabled,
+			cfg.Logging.AppNameInfer.Unknown,
+		))
 	}
 	r.Use(gin.Recovery())
 	if cfg.TrafficDump.Enabled {

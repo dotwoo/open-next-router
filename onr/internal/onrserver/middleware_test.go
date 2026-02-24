@@ -23,7 +23,7 @@ func TestRequestLoggerWithColor_LogsAppNameFromHeader(t *testing.T) {
 		c.Set(requestIDHeaderKey, "rid-1")
 		c.Next()
 	})
-	r.Use(requestLoggerWithColor(l, false, requestIDHeaderKey))
+	r.Use(requestLoggerWithColor(l, false, requestIDHeaderKey, false, ""))
 	r.GET("/v1/models", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -39,5 +39,93 @@ func TestRequestLoggerWithColor_LogsAppNameFromHeader(t *testing.T) {
 	logLine := out.String()
 	if !strings.Contains(logLine, "appname=demo-client") {
 		t.Fatalf("expected appname in log, got=%q", logLine)
+	}
+}
+
+func TestRequestLoggerWithColor_InfersAppNameFromUserAgent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var out bytes.Buffer
+	l := log.New(&out, "", 0)
+	requestIDHeaderKey := "X-Onr-Request-Id"
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(requestIDHeaderKey, "rid-1")
+		c.Next()
+	})
+	r.Use(requestLoggerWithColor(l, false, requestIDHeaderKey, true, ""))
+	r.GET("/v1/models", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("User-Agent", "claude-code/1.0")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	logLine := out.String()
+	if !strings.Contains(logLine, "appname=claude-code") {
+		t.Fatalf("expected inferred appname in log, got=%q", logLine)
+	}
+}
+
+func TestRequestLoggerWithColor_AppNameHeaderOverridesUserAgent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var out bytes.Buffer
+	l := log.New(&out, "", 0)
+	requestIDHeaderKey := "X-Onr-Request-Id"
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(requestIDHeaderKey, "rid-1")
+		c.Next()
+	})
+	r.Use(requestLoggerWithColor(l, false, requestIDHeaderKey, true, ""))
+	r.GET("/v1/models", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("appname", "manual-client")
+	req.Header.Set("User-Agent", "claude-code/1.0")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	logLine := out.String()
+	if !strings.Contains(logLine, "appname=manual-client") {
+		t.Fatalf("expected header appname in log, got=%q", logLine)
+	}
+	if strings.Contains(logLine, "appname=claude-code") {
+		t.Fatalf("expected user-agent inference skipped when header exists, got=%q", logLine)
+	}
+}
+
+func TestRequestLoggerWithColor_UsesUnknownWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var out bytes.Buffer
+	l := log.New(&out, "", 0)
+	requestIDHeaderKey := "X-Onr-Request-Id"
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(requestIDHeaderKey, "rid-1")
+		c.Next()
+	})
+	r.Use(requestLoggerWithColor(l, false, requestIDHeaderKey, true, "unknown-client"))
+	r.GET("/v1/models", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	logLine := out.String()
+	if !strings.Contains(logLine, "appname=unknown-client") {
+		t.Fatalf("expected unknown fallback appname in log, got=%q", logLine)
 	}
 }
