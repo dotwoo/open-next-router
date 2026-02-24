@@ -3,6 +3,7 @@ package onrserver
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,9 @@ func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string
 		fields := map[string]any{}
 		if v := c.GetString(requestIDHeaderKey); v != "" {
 			fields["request_id"] = v
+		}
+		if v := strings.TrimSpace(c.GetHeader("appname")); v != "" {
+			fields["appname"] = v
 		}
 		if v, ok := c.Get("onr.provider"); ok {
 			fields["provider"] = v
