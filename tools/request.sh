@@ -44,7 +44,7 @@ Examples:
   # Text generation / chat
   tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini","input":"hello"}'
   tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini","input":"hello"}' --stream
-  tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini","store":true, "stream":true, "instructions":"You are helpful.","input":[{"role":"user","content":[{"type":"input_text","text":"reply with exactly OK"}]}]}' --provider codex
+  tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini", "stream":true, "instructions":"You are helpful.","input":[{"role":"user","content":[{"type":"input_text","text":"reply with exactly OK"}]}]}' --provider codex
   tools/request.sh /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}' --provider openai
   tools/request.sh /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}' --stream
   tools/request.sh /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"timeout test"}]}' -- --max-time 15

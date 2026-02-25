@@ -1,3 +1,6 @@
 [submodule "onr-docs"]
 	path = onr-docs
 	url = https://github.com/r9s-ai/onr-docs
+[submodule "onr-lsp"]
+	path = onr-lsp
+	url = https://github.com/r9s-ai/onr-lsp
