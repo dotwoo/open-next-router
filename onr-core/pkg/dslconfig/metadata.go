@@ -11,6 +11,16 @@ type DirectiveMetadata struct {
 	Block string
 	Hover string
 	Modes []string
+	Args  []DirectiveArg
+}
+
+// DirectiveArg describes one positional argument for a directive.
+// Kind currently supports:
+// - "enum": one value from Enum list.
+type DirectiveArg struct {
+	Name string
+	Kind string
+	Enum []string
 }
 
 var directiveMetadata = []DirectiveMetadata{
@@ -51,8 +61,8 @@ var directiveMetadata = []DirectiveMetadata{
 	{Name: "oauth_refresh_token", Block: "auth", Hover: "`oauth_refresh_token <expr>;`\n\nSets OAuth refresh token expression for token exchange."},
 	{Name: "oauth_scope", Block: "auth", Hover: "`oauth_scope <expr>;`\n\nSets OAuth scope expression for token exchange."},
 	{Name: "oauth_audience", Block: "auth", Hover: "`oauth_audience <expr>;`\n\nSets OAuth audience expression for token exchange."},
-	{Name: "oauth_method", Block: "auth", Hover: "`oauth_method GET|POST;`\n\nSets HTTP method for OAuth token request."},
-	{Name: "oauth_content_type", Block: "auth", Hover: "`oauth_content_type form|json;`\n\nSets payload encoding for OAuth token request."},
+	{Name: "oauth_method", Block: "auth", Hover: "`oauth_method GET|POST;`\n\nSets HTTP method for OAuth token request.", Args: []DirectiveArg{{Name: "method", Kind: "enum", Enum: []string{"GET", "POST"}}}},
+	{Name: "oauth_content_type", Block: "auth", Hover: "`oauth_content_type form|json;`\n\nSets payload encoding for OAuth token request.", Args: []DirectiveArg{{Name: "content_type", Kind: "enum", Enum: []string{"form", "json"}}}},
 	{Name: "oauth_token_path", Block: "auth", Hover: "`oauth_token_path \"$.path\";`\n\nJSONPath to extract access token from OAuth response."},
 	{Name: "oauth_expires_in_path", Block: "auth", Hover: "`oauth_expires_in_path \"$.path\";`\n\nJSONPath to extract `expires_in` from OAuth response."},
 	{Name: "oauth_token_type_path", Block: "auth", Hover: "`oauth_token_type_path \"$.path\";`\n\nJSONPath to extract token type from OAuth response."},
@@ -96,11 +106,11 @@ var directiveMetadata = []DirectiveMetadata{
 	{Name: "finish_reason_path", Block: "metrics", Hover: "`finish_reason_path \"$.path\";`\n\nPath override for finish_reason extraction (custom mode)."},
 
 	{Name: "balance_mode", Block: "balance", Hover: "`balance_mode <mode>;`\n\nSelects built-in or custom balance query mode.", Modes: []string{"openai", "custom"}},
-	{Name: "method", Block: "balance", Hover: "`method GET|POST;`\n\nHTTP method used by balance query endpoint."},
+	{Name: "method", Block: "balance", Hover: "`method GET|POST;`\n\nHTTP method used by balance query endpoint.", Args: []DirectiveArg{{Name: "method", Kind: "enum", Enum: []string{"GET", "POST"}}}},
 	{Name: "path", Block: "balance", Hover: "`path <expr>;`\n\nPath for balance query endpoint (required in custom mode)."},
 	{Name: "balance_path", Block: "balance", Hover: "`balance_path \"$.path\";`\n\nJSON path used to read balance amount from response."},
 	{Name: "used_path", Block: "balance", Hover: "`used_path \"$.path\";`\n\nJSON path used to read used amount from response."},
-	{Name: "balance_unit", Block: "balance", Hover: "`balance_unit <unit>;`\n\nBalance currency/unit label (e.g. USD)."},
+	{Name: "balance_unit", Block: "balance", Hover: "`balance_unit <unit>;`\n\nBalance currency/unit label (e.g. USD).", Args: []DirectiveArg{{Name: "unit", Kind: "enum", Enum: []string{"USD", "CNY"}}}},
 	{Name: "subscription_path", Block: "balance", Hover: "`subscription_path <path>;`\n\nOptional path to query subscription endpoint."},
 	{Name: "usage_path", Block: "balance", Hover: "`usage_path <path>;`\n\nOptional path to query usage endpoint."},
 	{Name: "balance", Block: "balance", Hover: "`balance = <expr>;`\n\nCustom expression for balance value extraction."},
@@ -109,7 +119,7 @@ var directiveMetadata = []DirectiveMetadata{
 	{Name: "del_header", Block: "balance", Hover: "`del_header <Header-Name>;`\n\nDeletes header for balance query request."},
 
 	{Name: "models_mode", Block: "models", Hover: "`models_mode <mode>;`\n\nSelects models list query mode.", Modes: []string{"openai", "gemini", "custom"}},
-	{Name: "method", Block: "models", Hover: "`method GET|POST;`\n\nHTTP method used by models query endpoint."},
+	{Name: "method", Block: "models", Hover: "`method GET|POST;`\n\nHTTP method used by models query endpoint.", Args: []DirectiveArg{{Name: "method", Kind: "enum", Enum: []string{"GET", "POST"}}}},
 	{Name: "path", Block: "models", Hover: "`path <expr>;`\n\nPath for models query endpoint."},
 	{Name: "id_path", Block: "models", Hover: "`id_path \"$.path\";`\n\nJSON path to extract model id(s) from models response."},
 	{Name: "id_regex", Block: "models", Hover: "`id_regex \"<regex>\";`\n\nRegex rewrite applied to extracted model ids."},
@@ -209,4 +219,77 @@ func normalizeMetaBlock(s string) string {
 	default:
 		return v
 	}
+}
+
+// DirectiveArgEnumValuesInBlock returns enum values for one directive argument in one block.
+// It first tries exact block match, then falls back to name-only lookup.
+func DirectiveArgEnumValuesInBlock(name, block string, argIndex int) []string {
+	if argIndex < 0 {
+		return nil
+	}
+	key := strings.TrimSpace(name)
+	if key == "" {
+		return nil
+	}
+	b := normalizeMetaBlock(block)
+	if out := directiveArgEnumValues(key, b, argIndex, true); len(out) > 0 {
+		return out
+	}
+	return directiveArgEnumValues(key, b, argIndex, false)
+}
+
+func directiveArgEnumValues(name, block string, argIndex int, matchBlock bool) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 8)
+	for _, d := range directiveMetadata {
+		if d.Name != name {
+			continue
+		}
+		if matchBlock && normalizeMetaBlock(d.Block) != block {
+			continue
+		}
+		if len(d.Args) <= argIndex {
+			continue
+		}
+		arg := d.Args[argIndex]
+		if strings.ToLower(strings.TrimSpace(arg.Kind)) != "enum" {
+			continue
+		}
+		for _, v := range arg.Enum {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			if _, ok := seen[v]; ok {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// DirectiveMetadataList returns a copy of all directive metadata entries.
+func DirectiveMetadataList() []DirectiveMetadata {
+	out := make([]DirectiveMetadata, 0, len(directiveMetadata))
+	for _, d := range directiveMetadata {
+		copyItem := d
+		if len(d.Modes) > 0 {
+			copyItem.Modes = append([]string(nil), d.Modes...)
+		}
+		if len(d.Args) > 0 {
+			argsCopy := make([]DirectiveArg, 0, len(d.Args))
+			for _, a := range d.Args {
+				argCopy := a
+				if len(a.Enum) > 0 {
+					argCopy.Enum = append([]string(nil), a.Enum...)
+				}
+				argsCopy = append(argsCopy, argCopy)
+			}
+			copyItem.Args = argsCopy
+		}
+		out = append(out, copyItem)
+	}
+	return out
 }

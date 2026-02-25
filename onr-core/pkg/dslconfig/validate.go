@@ -171,16 +171,28 @@ func validateOAuthConfig(path, providerName, scope string, cfg OAuthConfig) erro
 		return fmt.Errorf("provider %q in %q: %s requires oauth_mode", providerName, path, scope)
 	}
 	if _, ok := oauthBuiltinTemplates[mode]; !ok {
-		return fmt.Errorf("provider %q in %q: %s unsupported oauth_mode %q", providerName, path, scope, cfg.Mode)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s unsupported oauth_mode %q", providerName, path, scope, cfg.Mode),
+			scope,
+			"oauth_mode",
+		)
 	}
 
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method != "" && method != "GET" && method != "POST" {
-		return fmt.Errorf("provider %q in %q: %s oauth_method must be GET or POST", providerName, path, scope)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s oauth_method must be GET or POST", providerName, path, scope),
+			scope,
+			"oauth_method",
+		)
 	}
 	ct := strings.ToLower(strings.TrimSpace(cfg.ContentType))
 	if ct != "" && ct != oauthContentTypeForm && ct != oauthContentTypeJSON {
-		return fmt.Errorf("provider %q in %q: %s oauth_content_type must be form or json", providerName, path, scope)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s oauth_content_type must be form or json", providerName, path, scope),
+			scope,
+			"oauth_content_type",
+		)
 	}
 	if cfg.TimeoutMs != nil && *cfg.TimeoutMs <= 0 {
 		return fmt.Errorf("provider %q in %q: %s oauth_timeout_ms must be > 0", providerName, path, scope)
@@ -290,7 +302,11 @@ func validateRequestTransform(path, providerName, scope string, t RequestTransfo
 	case "gemini_to_openai_chat":
 		return nil
 	default:
-		return fmt.Errorf("provider %q in %q: %s unsupported req_map mode %q", providerName, path, scope, t.ReqMapMode)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s unsupported req_map mode %q", providerName, path, scope, t.ReqMapMode),
+			scope,
+			"req_map",
+		)
 	}
 }
 
@@ -377,7 +393,11 @@ func validateBalanceMode(path, providerName, scope, raw, mode string) error {
 	case balanceModeOpenAI, balanceModeCustom:
 		return nil
 	default:
-		return fmt.Errorf("provider %q in %q: %s unsupported balance_mode %q", providerName, path, scope, raw)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s unsupported balance_mode %q", providerName, path, scope, raw),
+			scope,
+			"balance_mode",
+		)
 	}
 }
 
@@ -386,7 +406,11 @@ func validateBalanceMethod(path, providerName, scope, methodRaw string) error {
 	if method == "" || method == "GET" || method == "POST" {
 		return nil
 	}
-	return fmt.Errorf("provider %q in %q: %s method must be GET or POST", providerName, path, scope)
+	return validationIssue(
+		fmt.Errorf("provider %q in %q: %s method must be GET or POST", providerName, path, scope),
+		scope,
+		"method",
+	)
 }
 
 func validateBalancePaths(path, providerName, scope string, cfg BalanceQueryConfig) error {
@@ -437,7 +461,11 @@ func validateBalanceUnit(path, providerName, scope, unitRaw string) error {
 	if unit == "" || unit == "USD" || unit == "CNY" {
 		return nil
 	}
-	return fmt.Errorf("provider %q in %q: %s balance_unit must be USD or CNY", providerName, path, scope)
+	return validationIssue(
+		fmt.Errorf("provider %q in %q: %s balance_unit must be USD or CNY", providerName, path, scope),
+		scope,
+		"balance_unit",
+	)
 }
 
 func validateBalanceURLPath(path, providerName, scope, field, value string) error {
@@ -464,11 +492,19 @@ func validateModelsQueryConfig(path, providerName, scope string, cfg ModelsQuery
 	case modelsModeOpenAI, modelsModeGemini, modelsModeCustom:
 		// ok
 	default:
-		return fmt.Errorf("provider %q in %q: %s unsupported models_mode %q", providerName, path, scope, cfg.Mode)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s unsupported models_mode %q", providerName, path, scope, cfg.Mode),
+			scope,
+			"models_mode",
+		)
 	}
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method != "" && method != "GET" && method != "POST" {
-		return fmt.Errorf("provider %q in %q: %s method must be GET or POST", providerName, path, scope)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s method must be GET or POST", providerName, path, scope),
+			scope,
+			"method",
+		)
 	}
 	if mode == modelsModeCustom && strings.TrimSpace(cfg.Path) == "" {
 		return fmt.Errorf("provider %q in %q: %s path is required when models_mode=custom", providerName, path, scope)
@@ -521,7 +557,11 @@ func validateFinishReasonExtractConfig(path, providerName, scope string, cfg Fin
 			return fmt.Errorf("provider %q in %q: %s finish_reason_extract custom requires finish_reason_path", providerName, path, scope)
 		}
 	default:
-		return fmt.Errorf("provider %q in %q: %s unsupported finish_reason_extract mode %q", providerName, path, scope, cfg.Mode)
+		return validationIssue(
+			fmt.Errorf("provider %q in %q: %s unsupported finish_reason_extract mode %q", providerName, path, scope, cfg.Mode),
+			scope,
+			"finish_reason_extract",
+		)
 	}
 	if p != "" && !strings.HasPrefix(p, "$.") {
 		return fmt.Errorf("provider %q in %q: %s finish_reason_path must start with $. ", providerName, path, scope)

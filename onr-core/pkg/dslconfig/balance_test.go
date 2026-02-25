@@ -1,6 +1,7 @@
 package dslconfig
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -110,5 +111,13 @@ provider "demo" {
 
 	if _, err := ValidateProviderFile(path); err == nil {
 		t.Fatalf("expected ValidateProviderFile to fail for invalid balance_unit")
+	} else {
+		var issue *ValidationIssue
+		if !errors.As(err, &issue) {
+			t.Fatalf("expected ValidationIssue, got: %T", err)
+		}
+		if issue.Directive != "balance_unit" {
+			t.Fatalf("unexpected directive: %q", issue.Directive)
+		}
 	}
 }
