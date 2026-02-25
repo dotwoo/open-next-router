@@ -12,11 +12,8 @@ import (
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/httpclient"
 )
-
-type HTTPDoer interface {
-	Do(req *http.Request) (*http.Response, error)
-}
 
 type Params struct {
 	Provider string
@@ -25,7 +22,9 @@ type Params struct {
 	BaseURL  string
 	APIKey   string
 
-	HTTPClient HTTPDoer
+	// HTTPClient allows next-router to inject a fake client for tests or to
+	// override the default http.Client behavior.
+	HTTPClient httpclient.HTTPDoer
 	DebugOut   io.Writer
 }
 
@@ -97,7 +96,7 @@ func Query(ctx context.Context, p Params) (Result, error) {
 	}, nil
 }
 
-func getResponseBody(ctx context.Context, client HTTPDoer, method, reqURL string, headers http.Header, debugOut io.Writer) ([]byte, error) {
+func getResponseBody(ctx context.Context, client httpclient.HTTPDoer, method, reqURL string, headers http.Header, debugOut io.Writer) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, http.NoBody)
 	if err != nil {
 		return nil, err
