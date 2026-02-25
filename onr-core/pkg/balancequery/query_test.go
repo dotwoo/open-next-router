@@ -10,6 +10,7 @@ import (
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/httpclient/httpclienttest"
 )
 
 func TestQueryCustom(t *testing.T) {
@@ -125,5 +126,44 @@ func TestQueryOpenAI(t *testing.T) {
 	}
 	if result.Used == nil || *result.Used != 12.34 {
 		t.Fatalf("used got %+v, want 12.34", result.Used)
+	}
+}
+
+func TestQuery_UsesInjectedHTTPClient(t *testing.T) {
+	fakeClient := httpclienttest.NewFakeDoer(t,
+		httpclienttest.NewStringResponse(http.StatusOK, `{"data":{"total":42}}`),
+	)
+
+	result, err := Query(context.Background(), Params{
+		Provider: "custom",
+		File: dslconfig.ProviderFile{
+			Balance: dslconfig.ProviderBalance{
+				Defaults: dslconfig.BalanceQueryConfig{
+					Mode:        "custom",
+					Path:        "/v1/balance",
+					BalancePath: "$.data.total",
+				},
+			},
+		},
+		Meta:       dslmeta.Meta{API: "chat.completions"},
+		APIKey:     "sk-test",
+		BaseURL:    "https://billing.example",
+		HTTPClient: fakeClient,
+	})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if result.Balance != 42 {
+		t.Fatalf("balance=%v", result.Balance)
+	}
+	reqs := fakeClient.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("requests=%d", len(reqs))
+	}
+	if reqs[0].URL.String() != "https://billing.example/v1/balance" {
+		t.Fatalf("unexpected request url: %s", reqs[0].URL.String())
+	}
+	if reqs[0].Method != http.MethodGet {
+		t.Fatalf("unexpected method: %s", reqs[0].Method)
 	}
 }
