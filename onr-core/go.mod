@@ -2,8 +2,6 @@ module github.com/r9s-ai/open-next-router/onr-core
 
 go 1.25.3
 
-toolchain go1.25.3
-
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/stretchr/testify v1.11.1
