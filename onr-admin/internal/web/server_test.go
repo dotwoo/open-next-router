@@ -1,0 +1,272 @@
+package web
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const validOpenAIConf = `
+syntax "next-router/0.1";
+
+provider "openai" {
+  defaults {
+    upstream_config { base_url = "https://api.openai.com"; }
+    auth { auth_bearer; }
+  }
+
+  match api = "chat.completions" {
+    upstream { set_path "/v1/chat/completions"; }
+    response { resp_passthrough; }
+  }
+}
+`
+
+const validOpenAIConfUpdated = `
+syntax "next-router/0.1";
+
+provider "openai" {
+  defaults {
+    upstream_config { base_url = "https://api.openai.com/v2"; }
+    auth { auth_bearer; }
+  }
+
+  match api = "chat.completions" {
+    upstream { set_path "/v1/chat/completions"; }
+    response { resp_passthrough; }
+  }
+}
+`
+
+func TestSaveProviderRequiresValidationSuccess(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	target := filepath.Join(dir, "openai.conf")
+	if err := os.WriteFile(target, []byte(validOpenAIConf), 0o600); err != nil {
+		t.Fatalf("write seed provider conf: %v", err)
+	}
+
+	srv, err := NewServer(dir)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer httpSrv.Close()
+
+	invalid := strings.ReplaceAll(validOpenAIConfUpdated, `provider "openai"`, `provider "other"`)
+	status, body := postJSON(t, httpSrv.URL+"/api/providers/save", providerRequest{
+		Provider: "openai",
+		Content:  invalid,
+	})
+	if status != http.StatusBadRequest {
+		t.Fatalf("save invalid status=%d body=%v", status, body)
+	}
+
+	gotSeed, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read seed file: %v", err)
+	}
+	if string(gotSeed) != validOpenAIConf {
+		t.Fatalf("file changed after invalid save")
+	}
+
+	status, body = postJSON(t, httpSrv.URL+"/api/providers/save", providerRequest{
+		Provider: "openai",
+		Content:  validOpenAIConfUpdated,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("save valid status=%d body=%v", status, body)
+	}
+
+	gotSaved, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	if string(gotSaved) != validOpenAIConfUpdated {
+		t.Fatalf("unexpected saved content")
+	}
+}
+
+func TestProviderEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "openai.conf"), []byte(validOpenAIConf), 0o600); err != nil {
+		t.Fatalf("write provider conf: %v", err)
+	}
+	srv, err := NewServer(dir)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer httpSrv.Close()
+
+	listResp, err := http.Get(httpSrv.URL + "/api/providers")
+	if err != nil {
+		t.Fatalf("list providers: %v", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("list status=%d", listResp.StatusCode)
+	}
+	var listBody providerResponse
+	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list body: %v", err)
+	}
+	if !listBody.OK || len(listBody.Providers) != 1 || listBody.Providers[0] != "openai" {
+		t.Fatalf("unexpected list body: %+v", listBody)
+	}
+
+	getResp, err := http.Get(httpSrv.URL + "/api/provider?name=openai")
+	if err != nil {
+		t.Fatalf("get provider: %v", err)
+	}
+	defer func() { _ = getResp.Body.Close() }()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("get status=%d", getResp.StatusCode)
+	}
+	var getBody providerResponse
+	if err := json.NewDecoder(getResp.Body).Decode(&getBody); err != nil {
+		t.Fatalf("decode get body: %v", err)
+	}
+	if !getBody.OK || getBody.Provider != "openai" || strings.TrimSpace(getBody.Content) == "" {
+		t.Fatalf("unexpected get body: %+v", getBody)
+	}
+
+	status, body := postJSON(t, httpSrv.URL+"/api/providers/validate", providerRequest{
+		Provider: "openai",
+		Content:  validOpenAIConfUpdated,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("validate status=%d body=%v", status, body)
+	}
+}
+
+func TestResolveDefaultAPIBaseURL_FromEnv(t *testing.T) {
+	t.Setenv(envAPIBaseURL, "https://example.internal:3344/")
+	got := resolveDefaultAPIBaseURL()
+	if got != "https://example.internal:3344" {
+		t.Fatalf("resolveDefaultAPIBaseURL=%q", got)
+	}
+}
+
+func TestRenderIndexHTML_ReplacesDefaultAPIBaseURL(t *testing.T) {
+	out := renderIndexHTML("https://onr.local:3300/")
+	if strings.Contains(out, "__ONR_ADMIN_WEB_CURL_API_BASE_URL__") {
+		t.Fatalf("placeholder should be replaced")
+	}
+	if !strings.Contains(out, `value="https://onr.local:3300"`) {
+		t.Fatalf("unexpected rendered html")
+	}
+}
+
+func TestTestRequestEndpoint(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.Error(w, "unexpected path", http.StatusBadRequest)
+			return
+		}
+		if got := strings.TrimSpace(r.Header.Get("Authorization")); got == "" {
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
+			return
+		}
+		if got := strings.TrimSpace(r.Header.Get("x-onr-provider")); got != "openai" {
+			http.Error(w, "missing provider", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer upstream.Close()
+
+	srv, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer httpSrv.Close()
+
+	status, body := postTestJSON(t, httpSrv.URL+"/api/test/request", testRequest{
+		BaseURL:       upstream.URL,
+		Path:          "/v1/chat/completions",
+		Authorization: "Bearer onr:v1?k=change-me&p=openai&m=gpt-4o-mini",
+		Provider:      "openai",
+		Payload:       `{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}]}`,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%+v", status, body)
+	}
+	if !body.OK || body.Status != http.StatusOK {
+		t.Fatalf("unexpected body: %+v", body)
+	}
+	if !strings.Contains(body.Body, `"ok":true`) {
+		t.Fatalf("unexpected response body: %+v", body)
+	}
+}
+
+func TestTestRequestEndpoint_InvalidPayload(t *testing.T) {
+	srv, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	httpSrv := httptest.NewServer(srv.Handler())
+	defer httpSrv.Close()
+
+	status, body := postTestJSON(t, httpSrv.URL+"/api/test/request", testRequest{
+		BaseURL:       "http://127.0.0.1:3300",
+		Path:          "/v1/chat/completions",
+		Authorization: "Bearer onr:v1?k=change-me&p=openai&m=gpt-4o-mini",
+		Provider:      "openai",
+		Payload:       "not-json",
+	})
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%+v", status, body)
+	}
+	if body.OK || !strings.Contains(body.Error, "payload must be valid json") {
+		t.Fatalf("unexpected body: %+v", body)
+	}
+}
+
+func postJSON(t *testing.T, url string, body any) (int, providerResponse) {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	resp, err := http.Post(url, "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("post %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var out providerResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return resp.StatusCode, out
+}
+
+func postTestJSON(t *testing.T, url string, body any) (int, testResponse) {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	resp, err := http.Post(url, "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("post %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var out testResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return resp.StatusCode, out
+}

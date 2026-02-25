@@ -1,0 +1,546 @@
+package web
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html"
+	"io"
+	"io/fs"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/r9s-ai/open-next-router/onr-admin/internal/store"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
+)
+
+const (
+	defaultProvidersDir = "./config/providers"
+	defaultListen       = "127.0.0.1:3310"
+	defaultAPIBaseURL   = "http://127.0.0.1:3300"
+	envAPIBaseURL       = "ONR_ADMIN_WEB_CURL_API_BASE_URL"
+)
+
+var providerNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+
+type Options struct {
+	ConfigPath   string
+	ProvidersDir string
+	Listen       string
+}
+
+type Server struct {
+	providersDir string
+	indexHTML    string
+	mu           sync.Mutex
+}
+
+type providerRequest struct {
+	Provider string `json:"provider"`
+	Content  string `json:"content"`
+}
+
+type providerResponse struct {
+	OK              bool     `json:"ok"`
+	Provider        string   `json:"provider,omitempty"`
+	TargetFile      string   `json:"target_file,omitempty"`
+	Content         string   `json:"content,omitempty"`
+	LoadedProviders []string `json:"loaded_providers,omitempty"`
+	Providers       []string `json:"providers,omitempty"`
+	Error           string   `json:"error,omitempty"`
+}
+
+type testRequest struct {
+	BaseURL       string `json:"base_url"`
+	Path          string `json:"path"`
+	Authorization string `json:"authorization"`
+	Provider      string `json:"provider"`
+	Payload       string `json:"payload"`
+}
+
+type testResponse struct {
+	OK      bool              `json:"ok"`
+	Status  int               `json:"status,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Body    string            `json:"body,omitempty"`
+	Error   string            `json:"error,omitempty"`
+}
+
+func Run(opts Options) error {
+	providersDir := resolveProvidersDir(opts.ConfigPath, opts.ProvidersDir)
+	defaultBaseURL := resolveDefaultAPIBaseURL()
+	srv, err := newServer(providersDir, defaultBaseURL)
+	if err != nil {
+		return err
+	}
+	listen := strings.TrimSpace(opts.Listen)
+	if listen == "" {
+		listen = defaultListen
+	}
+	log.Printf(
+		"onr-admin web listening: url=%q providers_dir=%q default_curl_api_base_url=%q",
+		"http://"+listen,
+		providersDir,
+		defaultBaseURL,
+	)
+	return http.ListenAndServe(listen, srv.Handler())
+}
+
+func NewServer(providersDir string) (*Server, error) {
+	return newServer(providersDir, defaultAPIBaseURL)
+}
+
+func newServer(providersDir string, defaultBaseURL string) (*Server, error) {
+	dir := strings.TrimSpace(providersDir)
+	if dir == "" {
+		return nil, errors.New("providers dir is empty")
+	}
+	return &Server{
+		providersDir: dir,
+		indexHTML:    renderIndexHTML(defaultBaseURL),
+	}, nil
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/api/providers", s.handleProviders)
+	mux.HandleFunc("/api/provider", s.handleProvider)
+	mux.HandleFunc("/api/providers/validate", s.handleValidate)
+	mux.HandleFunc("/api/providers/save", s.handleSave)
+	mux.HandleFunc("/api/test/request", s.handleTestRequest)
+	return mux
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, s.indexHTML)
+}
+
+func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	names, err := listProviders(s.providersDir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, providerResponse{
+		OK:        true,
+		Providers: names,
+	})
+}
+
+func (s *Server) handleProvider(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	provider, err := normalizeProviderName(r.URL.Query().Get("name"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	target := filepath.Join(s.providersDir, provider+".conf")
+	// #nosec G304 -- target path is sanitized provider name under configured providers dir.
+	b, err := os.ReadFile(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, providerResponse{OK: false, Error: "provider file not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, providerResponse{
+		OK:         true,
+		Provider:   provider,
+		TargetFile: target,
+		Content:    string(b),
+	})
+}
+
+func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	in, err := decodeProviderRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	res, target, err := s.validateCandidate(in.Provider, in.Content)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, providerResponse{
+		OK:              true,
+		Provider:        in.Provider,
+		TargetFile:      target,
+		LoadedProviders: res.LoadedProviders,
+	})
+}
+
+func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	in, err := decodeProviderRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	res, target, err := s.validateCandidate(in.Provider, in.Content)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	if err := os.MkdirAll(s.providersDir, 0o750); err != nil {
+		writeJSON(w, http.StatusInternalServerError, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	if err := store.WriteAtomic(target, []byte(in.Content), false); err != nil {
+		writeJSON(w, http.StatusInternalServerError, providerResponse{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, providerResponse{
+		OK:              true,
+		Provider:        in.Provider,
+		TargetFile:      target,
+		LoadedProviders: res.LoadedProviders,
+	})
+}
+
+func (s *Server) handleTestRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	in, err := decodeTestRequest(r)
+	if err != nil {
+		writeJSONAny(w, http.StatusBadRequest, testResponse{OK: false, Error: err.Error()})
+		return
+	}
+	ctx := r.Context()
+	client := &http.Client{Timeout: 60 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, in.BaseURL+in.Path, strings.NewReader(in.Payload))
+	if err != nil {
+		writeJSONAny(w, http.StatusBadRequest, testResponse{OK: false, Error: err.Error()})
+		return
+	}
+	req.Header.Set("Authorization", in.Authorization)
+	req.Header.Set("Content-Type", "application/json")
+	if in.Provider != "" {
+		req.Header.Set("x-onr-provider", in.Provider)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		writeJSONAny(w, http.StatusBadGateway, testResponse{OK: false, Error: err.Error()})
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	bodyBytes, truncated, readErr := readBodyLimit(resp.Body, 2*1024*1024)
+	if readErr != nil {
+		writeJSONAny(w, http.StatusBadGateway, testResponse{OK: false, Error: readErr.Error()})
+		return
+	}
+	outBody := string(bodyBytes)
+	if truncated {
+		outBody += "\n...[truncated]"
+	}
+	headers := map[string]string{}
+	for k, v := range resp.Header {
+		if len(v) == 0 {
+			continue
+		}
+		headers[k] = strings.Join(v, ", ")
+	}
+	writeJSONAny(w, http.StatusOK, testResponse{
+		OK:      true,
+		Status:  resp.StatusCode,
+		Headers: headers,
+		Body:    outBody,
+	})
+}
+
+func (s *Server) validateCandidate(provider string, content string) (dslconfig.LoadResult, string, error) {
+	name, err := normalizeProviderName(provider)
+	if err != nil {
+		return dslconfig.LoadResult{}, "", err
+	}
+	target := filepath.Join(s.providersDir, name+".conf")
+
+	tmpRoot, err := os.MkdirTemp("", "onr-admin-web-providers-*")
+	if err != nil {
+		return dslconfig.LoadResult{}, "", err
+	}
+	defer func() { _ = os.RemoveAll(tmpRoot) }()
+
+	tmpDir := filepath.Join(tmpRoot, "providers")
+	if err := copyDirectory(s.providersDir, tmpDir); err != nil {
+		return dslconfig.LoadResult{}, "", err
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, name+".conf"), []byte(content), 0o600); err != nil {
+		return dslconfig.LoadResult{}, "", err
+	}
+	res, err := dslconfig.ValidateProvidersDir(tmpDir)
+	if err != nil {
+		return dslconfig.LoadResult{}, "", err
+	}
+	return res, target, nil
+}
+
+func normalizeProviderName(raw string) (string, error) {
+	name := strings.ToLower(strings.TrimSpace(raw))
+	if name == "" {
+		return "", errors.New("provider is empty")
+	}
+	if !providerNamePattern.MatchString(name) {
+		return "", fmt.Errorf("invalid provider name %q", raw)
+	}
+	return name, nil
+}
+
+func decodeProviderRequest(r *http.Request) (providerRequest, error) {
+	if r == nil || r.Body == nil {
+		return providerRequest{}, errors.New("empty request body")
+	}
+	defer func() { _ = r.Body.Close() }()
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	var in providerRequest
+	if err := dec.Decode(&in); err != nil {
+		return providerRequest{}, err
+	}
+	name, err := normalizeProviderName(in.Provider)
+	if err != nil {
+		return providerRequest{}, err
+	}
+	in.Provider = name
+	if strings.TrimSpace(in.Content) == "" {
+		return providerRequest{}, errors.New("content is empty")
+	}
+	return in, nil
+}
+
+func decodeTestRequest(r *http.Request) (testRequest, error) {
+	if r == nil || r.Body == nil {
+		return testRequest{}, errors.New("empty request body")
+	}
+	defer func() { _ = r.Body.Close() }()
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	var in testRequest
+	if err := dec.Decode(&in); err != nil {
+		return testRequest{}, err
+	}
+	in.BaseURL = strings.TrimRight(strings.TrimSpace(in.BaseURL), "/")
+	in.Path = strings.TrimSpace(in.Path)
+	in.Authorization = strings.TrimSpace(in.Authorization)
+	in.Provider = strings.ToLower(strings.TrimSpace(in.Provider))
+	in.Payload = strings.TrimSpace(in.Payload)
+	if in.BaseURL == "" {
+		return testRequest{}, errors.New("base_url is empty")
+	}
+	u, err := url.Parse(in.BaseURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return testRequest{}, errors.New("base_url is invalid")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return testRequest{}, errors.New("base_url scheme must be http or https")
+	}
+	if in.Path == "" || !strings.HasPrefix(in.Path, "/") {
+		return testRequest{}, errors.New("path must start with /")
+	}
+	if in.Authorization == "" {
+		return testRequest{}, errors.New("authorization is empty")
+	}
+	if in.Payload == "" {
+		return testRequest{}, errors.New("payload is empty")
+	}
+	var tmp any
+	if err := json.Unmarshal([]byte(in.Payload), &tmp); err != nil {
+		return testRequest{}, errors.New("payload must be valid json")
+	}
+	return in, nil
+}
+
+func writeJSON(w http.ResponseWriter, status int, body providerResponse) {
+	if w == nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+	_ = enc.Encode(body)
+}
+
+func writeJSONAny(w http.ResponseWriter, status int, body any) {
+	if w == nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+	_ = enc.Encode(body)
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter, allowed string) {
+	if w == nil {
+		return
+	}
+	if strings.TrimSpace(allowed) != "" {
+		w.Header().Set("Allow", allowed)
+	}
+	writeJSON(w, http.StatusMethodNotAllowed, providerResponse{OK: false, Error: "method not allowed"})
+}
+
+func resolveProvidersDir(cfgPath, override string) string {
+	if dir := strings.TrimSpace(override); dir != "" {
+		return dir
+	}
+	cfg, _ := store.LoadConfigIfExists(strings.TrimSpace(cfgPath))
+	if cfg != nil && strings.TrimSpace(cfg.Providers.Dir) != "" {
+		return strings.TrimSpace(cfg.Providers.Dir)
+	}
+	return defaultProvidersDir
+}
+
+func listProviders(providersDir string) ([]string, error) {
+	entries, err := os.ReadDir(providersDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if filepath.Ext(name) != ".conf" {
+			continue
+		}
+		base := strings.TrimSuffix(name, ".conf")
+		if base == "" {
+			continue
+		}
+		out = append(out, strings.ToLower(base))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func copyDirectory(src, dst string) error {
+	if err := os.MkdirAll(dst, 0o750); err != nil {
+		return err
+	}
+
+	info, err := os.Stat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("providers dir %q is not directory", src)
+	}
+
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink is not supported: %s", path)
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o750)
+		}
+		// #nosec G304 -- path is discovered by filepath.WalkDir under trusted providers dir.
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		mode := os.FileMode(0o600)
+		if fi, err := d.Info(); err == nil {
+			if p := fi.Mode().Perm(); p != 0 {
+				mode = p
+			}
+		}
+		return os.WriteFile(target, b, mode)
+	})
+}
+
+func readBodyLimit(rc io.Reader, limit int64) ([]byte, bool, error) {
+	if rc == nil {
+		return nil, false, nil
+	}
+	r := io.LimitReader(rc, limit+1)
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(b)) > limit {
+		return b[:limit], true, nil
+	}
+	return b, false, nil
+}
+
+func resolveDefaultAPIBaseURL() string {
+	if v := strings.TrimSpace(os.Getenv(envAPIBaseURL)); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return defaultAPIBaseURL
+}
+
+func renderIndexHTML(defaultBaseURL string) string {
+	base := strings.TrimSpace(defaultBaseURL)
+	if base == "" {
+		base = defaultAPIBaseURL
+	}
+	base = strings.TrimRight(base, "/")
+	return strings.ReplaceAll(
+		indexHTML,
+		"__ONR_ADMIN_WEB_CURL_API_BASE_URL__",
+		html.EscapeString(base),
+	)
+}

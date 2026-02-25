@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ONR Admin Web</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font-family: "Menlo", "Consolas", monospace; background: #f4f6f8; color: #182026; }
+    .wrap { max-width: 980px; margin: 24px auto; padding: 0 12px; }
+    .card { background: #fff; border: 1px solid #d8dee4; border-radius: 8px; padding: 12px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { border: 1px solid #c5ced8; border-radius: 6px; padding: 8px; background: #fff; }
+    textarea { width: 100%; min-height: 460px; resize: vertical; }
+    textarea.small { min-height: 170px; }
+    button { border: 1px solid #324a5f; background: #324a5f; color: #fff; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+    button.secondary { background: #fff; color: #324a5f; }
+    #status { white-space: pre-wrap; background: #0f1720; color: #d6e3ff; border-radius: 6px; padding: 10px; min-height: 44px; }
+    #execOutput { white-space: pre-wrap; background: #0f1720; color: #d6e3ff; border-radius: 6px; padding: 10px; min-height: 100px; }
+    .muted { color: #516273; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>ONR Provider Config Editor</h2>
+      <p class="muted">Submit validates against the whole providers directory. Save only happens after validation succeeds.</p>
+      <div class="row">
+        <select id="providerSelect"></select>
+        <input id="provider" placeholder="provider name (e.g. openai)" />
+        <button class="secondary" id="loadBtn">Load</button>
+        <button class="secondary" id="validateBtn">Validate</button>
+        <button id="saveBtn">Save</button>
+      </div>
+      <textarea id="content" spellcheck="false"></textarea>
+      <h4>Result</h4>
+      <div id="status"></div>
+      <h4>Test cURL</h4>
+      <div class="row">
+        <input id="onrBaseUrl" placeholder="ONR base url (e.g. http://127.0.0.1:3300)" value="__ONR_ADMIN_WEB_CURL_API_BASE_URL__" />
+        <input id="onrK" placeholder="k (access key)" value="" />
+        <input id="onrUK" placeholder="uk (BYOK upstream key, optional)" value="" />
+      </div>
+      <div class="row">
+        <select id="testApi">
+          <option value="chat.completions">chat.completions</option>
+          <option value="responses">responses</option>
+          <option value="embeddings">embeddings</option>
+          <option value="claude.messages">claude.messages</option>
+        </select>
+        <input id="testModel" placeholder="model (e.g. gpt-4o-mini)" value="gpt-4o-mini" />
+        <button class="secondary" id="genCurlBtn">Generate cURL</button>
+        <button class="secondary" id="runRequestBtn">Run Request</button>
+        <button id="copyCurlBtn">Copy</button>
+      </div>
+      <textarea class="small" id="curlOutput" readonly spellcheck="false"></textarea>
+      <h4>Test Response</h4>
+      <div id="execOutput"></div>
+    </div>
+  </div>
+  <script>
+    const providerInput = document.getElementById("provider");
+    const providerSelect = document.getElementById("providerSelect");
+    const contentEl = document.getElementById("content");
+    const statusEl = document.getElementById("status");
+    const onrBaseUrlEl = document.getElementById("onrBaseUrl");
+    const onrKEl = document.getElementById("onrK");
+    const onrUKEl = document.getElementById("onrUK");
+    const testApiEl = document.getElementById("testApi");
+    const testModelEl = document.getElementById("testModel");
+    const curlOutputEl = document.getElementById("curlOutput");
+    const execOutputEl = document.getElementById("execOutput");
+
+    function setStatus(obj) {
+      statusEl.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    }
+
+    function currentProvider() {
+      return (providerInput.value || "").trim().toLowerCase();
+    }
+
+    function escapeSingleQuote(v) {
+      return String(v || "").replace(/'/g, "'\"'\"'");
+    }
+
+    function normalizeBaseURL(v) {
+      const raw = String(v || "").trim();
+      if (!raw) {
+        return "http://127.0.0.1:3300";
+      }
+      return raw.replace(/\/+$/, "");
+    }
+
+    function testRequestFor(api, model) {
+      const normalizedModel = (model || "").trim() || "gpt-4o-mini";
+      if (api === "responses") {
+        return {
+          path: "/v1/responses",
+          body: {
+            model: normalizedModel,
+            input: [
+              {
+                role: "user",
+                content: "hi"
+              }
+            ]
+          }
+        };
+      }
+      if (api === "embeddings") {
+        return {
+          path: "/v1/embeddings",
+          body: {
+            model: normalizedModel,
+            input: "hello"
+          }
+        };
+      }
+      if (api === "claude.messages") {
+        return {
+          path: "/v1/messages",
+          body: {
+            model: normalizedModel,
+            max_tokens: 64,
+            messages: [
+              { role: "user", content: "hello" }
+            ]
+          }
+        };
+      }
+      return {
+        path: "/v1/chat/completions",
+        body: {
+          model: normalizedModel,
+          messages: [
+            { role: "user", content: "hello" }
+          ]
+        }
+      };
+    }
+
+    function buildOnrTokenKey(rawK, rawUK, provider, model) {
+      const params = new URLSearchParams();
+      if (rawK) {
+        params.set("k", rawK);
+      }
+      if (rawUK) {
+        params.set("uk", rawUK);
+      }
+      if (provider) {
+        params.set("p", provider);
+      }
+      if (model) {
+        params.set("m", model);
+      }
+      return `onr:v1?${params.toString()}`;
+    }
+
+    function buildTestContext() {
+      const provider = currentProvider();
+      if (!provider) {
+        setStatus("provider is empty");
+        return null;
+      }
+      const api = String(testApiEl.value || "chat.completions").trim();
+      const model = String(testModelEl.value || "").trim();
+      const k = String(onrKEl.value || "").trim();
+      const uk = String(onrUKEl.value || "").trim();
+      if (!k && !uk) {
+        setStatus("k or uk is required.");
+        return null;
+      }
+      const baseURL = normalizeBaseURL(onrBaseUrlEl.value);
+      const req = testRequestFor(api, model);
+      const onrTokenKey = buildOnrTokenKey(k, uk, provider, String(req.body.model || "").trim());
+      const payload = JSON.stringify(req.body);
+      return {
+        provider,
+        k,
+        uk,
+        baseURL,
+        path: req.path,
+        payload,
+        authorization: `Bearer ${onrTokenKey}`
+      };
+    }
+
+    function generateCurl() {
+      const ctx = buildTestContext();
+      if (!ctx) {
+        return;
+      }
+
+      const curl = [
+        `curl -sS ${ctx.baseURL}${ctx.path} \\`,
+        `  -H 'Authorization: ${escapeSingleQuote(ctx.authorization)}' \\`,
+        `  -H 'Content-Type: application/json' \\`,
+        `  -H 'x-onr-provider: ${escapeSingleQuote(ctx.provider)}' \\`,
+        `  -d '${escapeSingleQuote(ctx.payload)}'`
+      ].join("\n");
+
+      curlOutputEl.value = curl;
+      if (!ctx.k && ctx.uk) {
+        setStatus("Generated token with uk only. If your ONR auth requires k, this request may be rejected.");
+      }
+    }
+
+    async function runRequest() {
+      const ctx = buildTestContext();
+      if (!ctx) {
+        return;
+      }
+      execOutputEl.textContent = "Running request...";
+      const res = await fetch("/api/test/request", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          base_url: ctx.baseURL,
+          path: ctx.path,
+          authorization: ctx.authorization,
+          provider: ctx.provider,
+          payload: ctx.payload
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        execOutputEl.textContent = JSON.stringify(data, null, 2);
+        setStatus(data);
+        return;
+      }
+      execOutputEl.textContent = formatCurlLikeResponse(data, true);
+      if (!ctx.k && ctx.uk) {
+        setStatus("Request executed with uk only. If ONR auth requires k, server may reject this mode.");
+      }
+    }
+
+    function formatCurlLikeResponse(data, withHeaders) {
+      const body = String(data.body || "");
+      if (!withHeaders) {
+        return body;
+      }
+      const statusCode = Number(data.status || 0);
+      const headers = data.headers || {};
+      const keys = Object.keys(headers).sort((a, b) => a.localeCompare(b));
+      const headerLines = keys.map((k) => `${k}: ${headers[k]}`);
+      const statusLine = statusCode > 0 ? `HTTP/1.1 ${statusCode}` : "HTTP/1.1";
+      return [statusLine, ...headerLines, "", body].join("\n");
+    }
+
+    async function copyCurl() {
+      const text = String(curlOutputEl.value || "").trim();
+      if (!text) {
+        setStatus("cURL is empty. Click Generate cURL first.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus("cURL copied.");
+      } catch (_) {
+        curlOutputEl.focus();
+        curlOutputEl.select();
+        setStatus("Clipboard API failed. Selected cURL text, copy manually.");
+      }
+    }
+
+    async function refreshProviders() {
+      const res = await fetch("/api/providers");
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setStatus(data);
+        return;
+      }
+      providerSelect.innerHTML = "";
+      for (const p of data.providers || []) {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        providerSelect.appendChild(opt);
+      }
+      if ((data.providers || []).length > 0 && !providerInput.value) {
+        providerInput.value = data.providers[0];
+      }
+    }
+
+    async function loadProvider() {
+      const name = currentProvider();
+      if (!name) {
+        setStatus("provider is empty");
+        return;
+      }
+      const res = await fetch("/api/provider?name=" + encodeURIComponent(name));
+      const data = await res.json();
+      setStatus(data);
+      if (res.ok && data.ok) {
+        contentEl.value = data.content || "";
+      }
+    }
+
+    async function validateProvider() {
+      const body = { provider: currentProvider(), content: contentEl.value };
+      const res = await fetch("/api/providers/validate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      setStatus(data);
+      if (res.ok) {
+        await refreshProviders();
+      }
+    }
+
+    async function saveProvider() {
+      const body = { provider: currentProvider(), content: contentEl.value };
+      const res = await fetch("/api/providers/save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      setStatus(data);
+      if (res.ok) {
+        await refreshProviders();
+      }
+    }
+
+    providerSelect.addEventListener("change", () => {
+      providerInput.value = providerSelect.value;
+    });
+    document.getElementById("loadBtn").addEventListener("click", loadProvider);
+    document.getElementById("validateBtn").addEventListener("click", validateProvider);
+    document.getElementById("saveBtn").addEventListener("click", saveProvider);
+    document.getElementById("genCurlBtn").addEventListener("click", generateCurl);
+    document.getElementById("runRequestBtn").addEventListener("click", runRequest);
+    document.getElementById("copyCurlBtn").addEventListener("click", copyCurl);
+
+    refreshProviders().catch((err) => setStatus(String(err)));
+  </script>
+</body>
+</html>

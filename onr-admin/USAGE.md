@@ -125,3 +125,25 @@ Notes:
 
 - The TUI reads traffic dump logs from `traffic_dump.dir` (default `./dumps`).
 - Key hints: use `↑/↓` to navigate, `enter` to open, `/` to filter by provider/model/path/status/rid, `r` to reload, `q` to quit.
+
+## 9. web
+
+Start local web editor for provider DSL configs.
+
+```bash
+onr-admin web --config ./onr.yaml --listen 127.0.0.1:3310
+```
+
+Then open `http://127.0.0.1:3310` in your browser.
+
+Optional env for default cURL API base URL shown in page:
+
+```bash
+export ONR_ADMIN_WEB_CURL_API_BASE_URL="http://127.0.0.1:3300"
+```
+
+Behavior:
+
+- Submit `provider + content` to validate against the whole providers directory.
+- Save happens only after validation succeeds.
+- Target file is `providers.dir/<provider>.conf`.

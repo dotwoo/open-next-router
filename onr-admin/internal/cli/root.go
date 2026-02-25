@@ -34,6 +34,7 @@ func newRootCmd() *cobra.Command {
 		newModelsCmd(),
 		newPricingCmd(),
 		newVersionCmd(),
+		newWebCmd(),
 		newTUICmd(),
 	)
 	return cmd
