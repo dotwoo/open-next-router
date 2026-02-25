@@ -9,10 +9,12 @@ import (
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/requestid"
 	"github.com/r9s-ai/open-next-router/onr/internal/logx"
+	"github.com/r9s-ai/open-next-router/onr/internal/onrserver/accesslog"
 )
 
-func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string) gin.HandlerFunc {
+func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string, appnameInferEnabled bool, appnameInferUnknown string, accessFormatter *logx.AccessLogFormatter) gin.HandlerFunc {
 	requestIDHeaderKey = requestid.ResolveHeaderKey(requestIDHeaderKey)
+	collector := accesslog.NewCollector(requestIDHeaderKey, appnameInferEnabled, appnameInferUnknown)
 	if l == nil {
 		l = log.New(os.Stdout, "", log.LstdFlags)
 	}
@@ -22,86 +24,13 @@ func requestLoggerWithColor(l *log.Logger, color bool, requestIDHeaderKey string
 
 		status := c.Writer.Status()
 		latency := time.Since(start)
+		fields := collector.Collect(c, latency)
 
-		fields := map[string]any{}
-		if v := c.GetString(requestIDHeaderKey); v != "" {
-			fields["request_id"] = v
+		ts := time.Now()
+		if accessFormatter != nil {
+			l.Println(accessFormatter.Format(ts, status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
+			return
 		}
-		if v, ok := c.Get("onr.provider"); ok {
-			fields["provider"] = v
-		}
-		if v, ok := c.Get("onr.provider_source"); ok {
-			fields["provider_source"] = v
-		}
-		if v, ok := c.Get("onr.api"); ok {
-			fields["api"] = v
-		}
-		if v, ok := c.Get("onr.stream"); ok {
-			fields["stream"] = v
-		}
-		if v, ok := c.Get("onr.model"); ok {
-			fields["model"] = v
-		}
-		if v, ok := c.Get("onr.usage_stage"); ok {
-			fields["usage_stage"] = v
-		}
-		if v, ok := c.Get("onr.usage_input_tokens"); ok {
-			fields["input_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_output_tokens"); ok {
-			fields["output_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_total_tokens"); ok {
-			fields["total_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_cache_read_tokens"); ok {
-			fields["cache_read_tokens"] = v
-		}
-		if v, ok := c.Get("onr.usage_cache_write_tokens"); ok {
-			fields["cache_write_tokens"] = v
-		}
-		if v, ok := c.Get("onr.cost_total"); ok {
-			fields["cost_total"] = v
-		}
-		if v, ok := c.Get("onr.cost_input"); ok {
-			fields["cost_input"] = v
-		}
-		if v, ok := c.Get("onr.cost_output"); ok {
-			fields["cost_output"] = v
-		}
-		if v, ok := c.Get("onr.cost_cache_read"); ok {
-			fields["cost_cache_read"] = v
-		}
-		if v, ok := c.Get("onr.cost_cache_write"); ok {
-			fields["cost_cache_write"] = v
-		}
-		if v, ok := c.Get("onr.billable_input_tokens"); ok {
-			fields["billable_input_tokens"] = v
-		}
-		if v, ok := c.Get("onr.cost_multiplier"); ok {
-			fields["cost_multiplier"] = v
-		}
-		if v, ok := c.Get("onr.cost_model"); ok {
-			fields["cost_model"] = v
-		}
-		if v, ok := c.Get("onr.cost_channel"); ok {
-			fields["cost_channel"] = v
-		}
-		if v, ok := c.Get("onr.cost_unit"); ok {
-			fields["cost_unit"] = v
-		}
-		if v, ok := c.Get("onr.latency_ms"); ok {
-			fields["latency_ms"] = v
-		} else {
-			fields["latency_ms"] = latency.Milliseconds()
-		}
-		if v, ok := c.Get("onr.upstream_status"); ok {
-			fields["upstream_status"] = v
-		}
-		if v, ok := c.Get("onr.finish_reason"); ok {
-			fields["finish_reason"] = v
-		}
-
-		l.Println(logx.FormatRequestLineWithColor(time.Now(), status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
+		l.Println(logx.FormatRequestLineWithColor(ts, status, latency, c.ClientIP(), c.Request.Method, c.Request.URL.Path, fields, color))
 	}
 }

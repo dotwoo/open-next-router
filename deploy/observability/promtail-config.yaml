@@ -1,0 +1,51 @@
+server:
+  http_listen_port: 9080
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: onr-access
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: onr-access
+          app: onr
+          __path__: /workspace/logs/access.log
+
+    pipeline_stages:
+      - drop:
+          expression: '\|\s[A-Z]+\s"/(?:[^v].*|v[^1].*)"'
+      - regex:
+          expression: '^(?P<file_ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[ONR\] (?P<onr_ts>[^|]+)\s\|\s(?P<status>\d{3})\s\|\s(?P<latency_col>[^|]+)\s\|\s(?P<client_ip>[^|]+)\s\|\s(?P<method>\S+)\s"(?P<path>[^"]+)"(?:\s\|\s(?P<kv>.*))?$'
+      - logfmt:
+          source: kv
+          mapping:
+            request_id:
+            provider:
+            provider_source:
+            api:
+            appname:
+            model:
+            stream:
+            latency_ms:
+            ttft_ms:
+            tps:
+            upstream_status:
+            finish_reason:
+            usage_stage:
+            input_tokens:
+            output_tokens:
+            total_tokens:
+            cost_total:
+            cost_input:
+            cost_output:
+      - labels:
+          status:
+          method:
+          provider:
+          api:
+          appname:

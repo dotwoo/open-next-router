@@ -77,6 +77,7 @@ func TestHandleNonStreamResponse_SkipUsageEstimationOnNon200(t *testing.T) {
 		}
 		if out == nil {
 			t.Fatalf("expected non-nil result")
+			return
 		}
 		if out.Usage == nil {
 			t.Fatalf("expected usage for status 200")
@@ -120,6 +121,7 @@ func TestHandleNonStreamResponse_SkipUsageEstimationOnNon200(t *testing.T) {
 		}
 		if out == nil {
 			t.Fatalf("expected non-nil result")
+			return
 		}
 		if out.Usage != nil {
 			t.Fatalf("expected usage to be nil for non-200 status, got: %#v", out.Usage)

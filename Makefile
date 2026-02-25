@@ -19,7 +19,7 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 run: ## Run the application locally
-	go run -ldflags "$(LDFLAGS)" ./cmd/onr --config ./onr.yaml
+	GIN_MODE=release go run -ldflags "$(LDFLAGS)" ./cmd/onr --config ./onr.yaml
 
 build: ## Build the main binary
 	go build -ldflags "$(LDFLAGS)" -o bin/onr ./cmd/onr

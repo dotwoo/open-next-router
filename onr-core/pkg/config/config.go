@@ -69,9 +69,15 @@ type Config struct {
 	} `yaml:"traffic_dump"`
 
 	Logging struct {
-		Level         string `yaml:"level"`
-		AccessLog     bool   `yaml:"access_log"`
-		AccessLogPath string `yaml:"access_log_path"`
+		Level                 string `yaml:"level"`
+		AccessLog             bool   `yaml:"access_log"`
+		AccessLogPath         string `yaml:"access_log_path"`
+		AccessLogFormat       string `yaml:"access_log_format"`
+		AccessLogFormatPreset string `yaml:"access_log_format_preset"`
+		AppNameInfer          struct {
+			Enabled bool   `yaml:"enabled"`
+			Unknown string `yaml:"unknown"`
+		} `yaml:"appname_infer"`
 	} `yaml:"logging"`
 }
 
@@ -214,6 +220,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := strings.TrimSpace(os.Getenv("ONR_ACCESS_LOG_PATH")); v != "" {
 		cfg.Logging.AccessLogPath = v
+	}
+	if v := os.Getenv("ONR_ACCESS_LOG_FORMAT"); strings.TrimSpace(v) != "" {
+		cfg.Logging.AccessLogFormat = v
+	}
+	if v := strings.TrimSpace(os.Getenv("ONR_ACCESS_LOG_FORMAT_PRESET")); v != "" {
+		cfg.Logging.AccessLogFormatPreset = v
 	}
 }
 

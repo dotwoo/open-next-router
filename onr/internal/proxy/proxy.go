@@ -53,6 +53,8 @@ type Result struct {
 	UsageStage     string
 	FinishReason   string
 	Cost           map[string]any
+	TTFTMs         int64
+	TPS            float64
 }
 
 type Client struct {
@@ -422,7 +424,7 @@ func (c *Client) handleStreamResponse(
 	dump := newStreamDumpState(gc)
 	defer dump.Append(gc, resp)
 
-	n, err := streamToDownstream(gc, m, respDir, resp, usageTail, dump)
+	n, firstWriteAt, err := streamToDownstream(gc, m, respDir, resp, usageTail, dump)
 	ignoredDisconnect := isClientDisconnectErr(err)
 	dump.SetStreamResult(n, err, ignoredDisconnect)
 	if err != nil && !ignoredDisconnect {
@@ -463,6 +465,7 @@ func (c *Client) handleStreamResponse(
 		usageStage = out.Stage
 		cost = c.computeCost(m, provider, key.Name, usage)
 	}
+	ttftMs, tps := streamPerfMetrics(start, firstWriteAt, usage)
 	return &Result{
 		Provider:       provider,
 		ProviderKey:    key.Name,
@@ -476,7 +479,65 @@ func (c *Client) handleStreamResponse(
 		UsageStage:     usageStage,
 		FinishReason:   finishReason,
 		Cost:           cost,
+		TTFTMs:         ttftMs,
+		TPS:            tps,
 	}, nil
+}
+
+func streamPerfMetrics(start time.Time, firstWriteAt time.Time, usage map[string]any) (int64, float64) {
+	if start.IsZero() || firstWriteAt.IsZero() || firstWriteAt.Before(start) {
+		return 0, 0
+	}
+	ttftMs := firstWriteAt.Sub(start).Milliseconds()
+	if ttftMs < 0 {
+		ttftMs = 0
+	}
+	outputTokens, ok := numberAsFloat64(usage["output_tokens"])
+	if !ok || outputTokens <= 0 {
+		return ttftMs, 0
+	}
+	elapsed := time.Since(firstWriteAt).Seconds()
+	if elapsed <= 0 {
+		return ttftMs, 0
+	}
+	return ttftMs, outputTokens / elapsed
+}
+
+func numberAsFloat64(v any) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case float32:
+		return float64(n), true
+	case float64:
+		return n, true
+	case json.Number:
+		f, err := n.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
 }
 
 func shouldEstimateUsage(statusCode int) bool {

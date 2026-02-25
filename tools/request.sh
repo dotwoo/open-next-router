@@ -15,23 +15,53 @@ die() {
   exit 1
 }
 
+merge_stream_true_if_needed() {
+  local payload="$1"
+  if ! command -v jq >/dev/null 2>&1; then
+    die "--stream with JSON payload requires jq (install jq or set stream in JSON manually)"
+  fi
+  printf '%s' "${payload}" | jq -c 'if type == "object" and (has("stream") | not) then . + {"stream": true} else . end' \
+    || die "invalid JSON payload"
+}
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
   tools/request.sh [-X METHOD] [--provider NAME] [--no-auth] [--json JSON | --json-file FILE] [--stream] <path-or-url> [-- curl_args...]
-
-Examples:
-  tools/request.sh /healthz --no-auth
-  tools/request.sh /v1/models
-  tools/request.sh --provider openai /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
-  tools/request.sh -X POST /v1/chat/completions --json-file ./api-test/chat.json
-  tools/request.sh --stream -X POST /v1/chat/completions --json '{"model":"gpt-4o-mini","stream":true,"messages":[{"role":"user","content":"hi"}]}'
 
 Env (auto source repo .env if exists):
   ONR_BASE_URL    Default: derived from ONR_LISTEN or http://127.0.0.1:3300
   ONR_LISTEN      e.g. :3300
   ONR_ACCESS_KEY_DEFAULT  preferred auth key (Authorization: Bearer <key>)
   ONR_API_KEY             legacy fallback auth key
+
+Examples:
+  # Basic
+  tools/request.sh /healthz --no-auth
+  tools/request.sh /v1/models
+  tools/request.sh 'http://127.0.0.1:3300/v1/models' -- -i
+
+  # Text generation / chat
+  tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini","input":"hello"}'
+  tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini","input":"hello"}' --stream
+  tools/request.sh /v1/responses --json '{"model":"gpt-5.1-codex-mini","store":true, "stream":true, "instructions":"You are helpful.","input":[{"role":"user","content":[{"type":"input_text","text":"reply with exactly OK"}]}]}' --provider codex
+  tools/request.sh /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}' --provider openai
+  tools/request.sh /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}' --stream
+  tools/request.sh /v1/chat/completions --json '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"timeout test"}]}' -- --max-time 15
+
+  # Embeddings
+  tools/request.sh /v1/embeddings --json '{"model":"text-embedding-3-small","input":"hello world"}'
+
+  # Images
+  tools/request.sh /v1/images/generations --json '{"model":"gpt-image-1","prompt":"a red fox in snow"}'
+
+  # Audio
+  tools/request.sh /v1/audio/speech --json '{"model":"gpt-4o-mini-tts","voice":"alloy","input":"hello"}'
+
+  # Gemini native
+  tools/request.sh '/v1beta/models/gemini-2.5-flash:generateContent' --json '{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}'
+  tools/request.sh '/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse' --stream --json '{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}'
+
 EOF
   exit 2
 }
@@ -156,6 +186,16 @@ fi
 
 if [[ -n "${json}" && -n "${json_file}" ]]; then
   die "use only one of --json or --json-file"
+fi
+
+if [[ "${stream}" == "true" ]]; then
+  if [[ -n "${json}" ]]; then
+    json="$(merge_stream_true_if_needed "${json}")"
+  elif [[ -n "${json_file}" ]]; then
+    [[ -f "${json_file}" ]] || die "json file not found: ${json_file}"
+    json="$(merge_stream_true_if_needed "$(cat "${json_file}")")"
+    json_file=""
+  fi
 fi
 
 data_args=()

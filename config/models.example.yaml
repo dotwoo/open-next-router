@@ -6,14 +6,14 @@ models:
   # - round_robin (default)
 
   gpt-4o-mini:
-    providers: 
+    providers:
       - openai
-      - routertokens
+      - r9s
     strategy: round_robin
     owned_by: open-next-router
 
   claude-haiku-4-5:
-    providers: 
+    providers:
       - anthropic
     strategy: round_robin
 
@@ -21,4 +21,3 @@ models:
     providers:
       - gemini
     strategy: round_robin
-

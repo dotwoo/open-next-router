@@ -67,5 +67,23 @@ logging:
   # Access log output (nginx-like):
   # - access_log: enable/disable
   # - access_log_path: if set, append logs to this file; otherwise output to stdout
+  # - access_log_format: optional custom format with $variables; non-empty has highest priority
+  # - access_log_format_preset: optional preset used only when access_log_format is empty
+  #   presets: onr_combined / onr_minimal
+  #   Available variables:
+  #   $time_local $status $latency $latency_ms $client_ip $method $path
+  #   $request_id $appname $provider $provider_source $api $stream $model
+  #   $usage_stage $input_tokens $output_tokens $total_tokens
+  #   $cache_read_tokens $cache_write_tokens
+  #   $cost_total $cost_input $cost_output $cost_cache_read $cost_cache_write
+  #   $billable_input_tokens $cost_multiplier $cost_model $cost_channel $cost_unit
+  #   $upstream_status $finish_reason $ttft_ms $tps
+  # - appname_infer.enabled: infer appname from User-Agent when request header `appname` is missing
+  # - appname_infer.unknown: fallback appname when inference misses; empty means omit appname field
   access_log: true
   access_log_path: ""
+  access_log_format: ""
+  access_log_format_preset: ""
+  appname_infer:
+    enabled: false
+    unknown: ""

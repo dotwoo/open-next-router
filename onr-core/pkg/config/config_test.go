@@ -36,6 +36,9 @@ auth:
 	if !cfg.Logging.AccessLog {
 		t.Fatalf("access_log default should be true")
 	}
+	if cfg.Logging.AppNameInfer.Enabled {
+		t.Fatalf("logging.appname_infer.enabled default should be false")
+	}
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
@@ -58,6 +61,8 @@ upstream_proxies:
 	t.Setenv("ONR_TRAFFIC_DUMP_MASK_SECRETS", "off")
 	t.Setenv("ONR_UPSTREAM_PROXY_OPENAI", "http://127.0.0.1:8888")
 	t.Setenv("ONR_UPSTREAM_PROXY_QWEN", "")
+	t.Setenv("ONR_ACCESS_LOG_FORMAT", "$method $path")
+	t.Setenv("ONR_ACCESS_LOG_FORMAT_PRESET", "onr_minimal")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -83,6 +88,12 @@ upstream_proxies:
 	}
 	if _, ok := cfg.UpstreamProxies.ByProvider["qwen"]; ok {
 		t.Fatalf("qwen proxy should be removed by empty env override")
+	}
+	if cfg.Logging.AccessLogFormat != "$method $path" {
+		t.Fatalf("access_log_format not overridden: %q", cfg.Logging.AccessLogFormat)
+	}
+	if cfg.Logging.AccessLogFormatPreset != "onr_minimal" {
+		t.Fatalf("access_log_format_preset not overridden: %q", cfg.Logging.AccessLogFormatPreset)
 	}
 }
 
