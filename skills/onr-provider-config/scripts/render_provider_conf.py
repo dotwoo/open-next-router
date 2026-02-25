@@ -205,8 +205,8 @@ def render_balance(balance_cfg: Dict[str, Any]) -> List[str]:
         lines.append(f"method {balance_cfg['method']};")
     if "path" in balance_cfg:
         lines.append(f"path {quote(str(balance_cfg['path']))};")
-    if "balance" in balance_cfg:
-        lines.append(f"balance = {format_expr(balance_cfg['balance'])};")
+    if "balance_expr" in balance_cfg:
+        lines.append(f"balance_expr = {format_expr(balance_cfg['balance_expr'])};")
     if "balance_path" in balance_cfg:
         lines.append(f"balance_path {format_expr(balance_cfg['balance_path'])};")
     if "used" in balance_cfg:

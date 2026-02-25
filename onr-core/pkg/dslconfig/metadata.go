@@ -116,7 +116,7 @@ var directiveMetadata = []DirectiveMetadata{
 	{Name: "balance_unit", Block: "balance", Hover: "`balance_unit <unit>;`\n\nBalance currency/unit label (e.g. USD).", Args: []DirectiveArg{{Name: "unit", Kind: "enum", Enum: []string{"USD", "CNY"}}}},
 	{Name: "subscription_path", Block: "balance", Hover: "`subscription_path <path>;`\n\nOptional path to query subscription endpoint."},
 	{Name: "usage_path", Block: "balance", Hover: "`usage_path <path>;`\n\nOptional path to query usage endpoint."},
-	{Name: "balance", Block: "balance", Hover: "`balance = <expr>;`\n\nCustom expression for balance value extraction."},
+	{Name: "balance_expr", Block: "balance", Hover: "`balance_expr = <expr>;`\n\nCustom expression for balance value extraction."},
 	{Name: "used", Block: "balance", Hover: "`used = <expr>;`\n\nCustom expression for used value extraction."},
 	{Name: "set_header", Block: "balance", Hover: "`set_header <Header-Name> <expr>;`\n\nSets header for balance query request."},
 	{Name: "del_header", Block: "balance", Hover: "`del_header <Header-Name>;`\n\nDeletes header for balance query request."},

@@ -2,7 +2,7 @@ package dslconfig
 
 import "strings"
 
-const balanceExprKey = "balance"
+const balanceExprKey = "balance_expr"
 
 func parseBalancePhase(s *scanner, cfg *BalanceQueryConfig) error {
 	lb := s.nextNonTrivia()

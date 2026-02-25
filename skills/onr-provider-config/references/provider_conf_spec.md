@@ -19,6 +19,9 @@ Use this JSON schema guide with `scripts/render_provider_conf.py`.
 - `balance`: defaults balance block
 - `models`: defaults models block
 
+Balance object note:
+- use `balance_expr` to render `balance_expr = <expr>;`
+
 ## Route object
 
 Each route in `routes` supports:

@@ -58,7 +58,7 @@ provider "demo" {
       balance_mode custom;
       method GET;
       path "/v1/credits";
-      balance = $.data.total_credits - $.data.total_usage;
+      balance_expr = $.data.total_credits - $.data.total_usage;
       used_path "$.data.total_usage";
       balance_unit "USD";
       set_header "Authorization" concat("Bearer ", $channel.key);

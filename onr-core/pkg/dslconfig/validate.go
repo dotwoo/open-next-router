@@ -367,7 +367,7 @@ func validateBalanceQueryConfig(path, providerName, scope string, cfg BalanceQue
 	if err := validateBalancePaths(path, providerName, scope, cfg); err != nil {
 		return err
 	}
-	if err := validateBalanceExpr(path, providerName, scope, "balance", cfg.BalanceExpr); err != nil {
+	if err := validateBalanceExpr(path, providerName, scope, "balance_expr", cfg.BalanceExpr); err != nil {
 		return err
 	}
 	if err := validateBalanceExpr(path, providerName, scope, "used", cfg.UsedExpr); err != nil {
@@ -451,7 +451,7 @@ func validateCustomBalanceConfig(path, providerName, scope, mode string, cfg Bal
 		return fmt.Errorf("provider %q in %q: %s path is required when balance_mode=custom", providerName, path, scope)
 	}
 	if strings.TrimSpace(cfg.BalanceExpr) == "" && strings.TrimSpace(cfg.BalancePath) == "" {
-		return fmt.Errorf("provider %q in %q: %s requires balance_path or balance expr", providerName, path, scope)
+		return fmt.Errorf("provider %q in %q: %s requires balance_path or balance_expr", providerName, path, scope)
 	}
 	return nil
 }

@@ -1074,10 +1074,10 @@ Multiple: yes
 - `balance_mode custom` 时必填。
 - 支持绝对 URL 或相对 provider `base_url` 的路径。
 
-#### balance / used
+#### balance_expr / used
 
 ```text
-Syntax:  balance = <expr>;
+Syntax:  balance_expr = <expr>;
 Syntax:  used = <expr>;
 Default: —
 Context: balance
@@ -1096,7 +1096,7 @@ Context: balance
 Multiple: yes
 ```
 
-- 在 custom 模式下，如果未设置 `balance`，则 `balance_path` 必填。
+- 在 custom 模式下，如果未设置 `balance_expr`，则 `balance_path` 必填。
 
 #### balance_unit
 

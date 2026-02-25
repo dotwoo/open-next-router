@@ -1081,10 +1081,10 @@ Multiple: yes
 - Required in `balance_mode custom`.
 - Supports absolute URL or path relative to provider `base_url`.
 
-#### balance / used
+#### balance_expr / used
 
 ```text
-Syntax:  balance = <expr>;
+Syntax:  balance_expr = <expr>;
 Syntax:  used = <expr>;
 Default: —
 Context: balance
@@ -1103,7 +1103,7 @@ Context: balance
 Multiple: yes
 ```
 
-- `balance_path` is required if `balance` is not set in custom mode.
+- `balance_path` is required if `balance_expr` is not set in custom mode.
 
 #### balance_unit
 
