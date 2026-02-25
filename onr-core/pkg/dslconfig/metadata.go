@@ -1,6 +1,9 @@
 package dslconfig
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // DirectiveMetadata describes one DSL directive's editor-facing metadata.
 // Block uses normalized names:
@@ -209,6 +212,88 @@ func ModesByDirective(name string) []string {
 		}
 	}
 	return out
+}
+
+// ModeDirectiveNames returns directive names that accept built-in mode values.
+func ModeDirectiveNames() []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 16)
+	for _, d := range directiveMetadata {
+		if len(d.Modes) == 0 {
+			continue
+		}
+		name := strings.TrimSpace(d.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DirectiveAllowedBlocks returns block names where this directive is allowed.
+// Returned block names are normalized ("top" for file-level).
+func DirectiveAllowedBlocks(name string) []string {
+	key := strings.TrimSpace(name)
+	if key == "" {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 8)
+	for _, d := range directiveMetadata {
+		if d.Name != key {
+			continue
+		}
+		block := normalizeMetaBlock(d.Block)
+		if block == "" {
+			continue
+		}
+		if _, ok := seen[block]; ok {
+			continue
+		}
+		seen[block] = struct{}{}
+		out = append(out, block)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// BlockDirectiveNames returns block directive keywords (excluding "top").
+func BlockDirectiveNames() []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 16)
+	for _, d := range directiveMetadata {
+		block := normalizeMetaBlock(d.Block)
+		if block == "" || block == "top" {
+			continue
+		}
+		if _, ok := seen[block]; ok {
+			continue
+		}
+		seen[block] = struct{}{}
+		out = append(out, block)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// IsBlockDirective reports whether name is a block directive keyword.
+func IsBlockDirective(name string) bool {
+	key := strings.TrimSpace(name)
+	if key == "" {
+		return false
+	}
+	for _, block := range BlockDirectiveNames() {
+		if block == key {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeMetaBlock(s string) string {

@@ -119,6 +119,53 @@ func TestMetadata_EnumArgOptionsConsistency(t *testing.T) {
 	assertSetEqual(t, "balance_unit.balance", DirectiveArgEnumValuesInBlock("balance_unit", "balance", 0), []string{"USD", "CNY"})
 }
 
+func TestModeDirectiveNames(t *testing.T) {
+	got := ModeDirectiveNames()
+	if len(got) == 0 {
+		t.Fatalf("expected non-empty mode directive names")
+	}
+	gotSet := make(map[string]struct{}, len(got))
+	for _, name := range got {
+		gotSet[name] = struct{}{}
+	}
+	for _, must := range []string{"req_map", "resp_map", "sse_parse", "oauth_mode", "balance_mode", "models_mode"} {
+		if _, ok := gotSet[must]; !ok {
+			t.Fatalf("expected mode directive %q in %v", must, got)
+		}
+	}
+}
+
+func TestDirectiveAllowedBlocks(t *testing.T) {
+	assertSetEqual(t, "set_header", DirectiveAllowedBlocks("set_header"), []string{"request", "balance", "models"})
+	assertSetEqual(t, "req_map", DirectiveAllowedBlocks("req_map"), []string{"request"})
+	assertSetEqual(t, "provider", DirectiveAllowedBlocks("provider"), []string{"top"})
+}
+
+func TestBlockDirectiveNamesAndIsBlockDirective(t *testing.T) {
+	blocks := BlockDirectiveNames()
+	if len(blocks) == 0 {
+		t.Fatalf("expected non-empty block directive names")
+	}
+	if IsBlockDirective("request") != true {
+		t.Fatalf("request should be a block directive")
+	}
+	if IsBlockDirective("req_map") != false {
+		t.Fatalf("req_map should not be a block directive")
+	}
+	for _, must := range []string{"provider", "defaults", "match", "request", "response"} {
+		found := false
+		for _, b := range blocks {
+			if b == must {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected block directive %q in %v", must, blocks)
+		}
+	}
+}
+
 func assertSetEqual(t *testing.T, name string, got, want []string) {
 	t.Helper()
 	gotSet := make(map[string]struct{}, len(got))
