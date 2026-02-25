@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONR Provider Config Creator"
+  short_description: "Create ONR provider config files from user inputs"
+  default_prompt: "Generate an ONR provider config under config/providers using user-supplied provider details, validate syntax, and report the created file."

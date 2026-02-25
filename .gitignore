@@ -12,6 +12,8 @@ run/
 # Build outputs
 *.exe
 *.out
+__pycache__/
+*.pyc
 
 # Go
 /bin/
