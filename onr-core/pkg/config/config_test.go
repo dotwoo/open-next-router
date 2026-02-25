@@ -30,6 +30,12 @@ auth:
 	if cfg.Keys.File == "" || cfg.Models.File == "" || cfg.Providers.Dir == "" {
 		t.Fatalf("expected default paths")
 	}
+	if cfg.Providers.AutoReload.Enabled {
+		t.Fatalf("providers.auto_reload.enabled default should be false")
+	}
+	if cfg.Providers.AutoReload.DebounceMs != 300 {
+		t.Fatalf("providers.auto_reload.debounce_ms default=%d", cfg.Providers.AutoReload.DebounceMs)
+	}
 	if !cfg.TrafficDump.MaskSecrets {
 		t.Fatalf("mask_secrets default should be true")
 	}
@@ -52,6 +58,8 @@ upstream_proxies:
 `)
 	t.Setenv("ONR_API_KEY", "k2")
 	t.Setenv("ONR_LISTEN", ":9999")
+	t.Setenv("ONR_PROVIDERS_AUTO_RELOAD_ENABLED", "1")
+	t.Setenv("ONR_PROVIDERS_AUTO_RELOAD_DEBOUNCE_MS", "450")
 	t.Setenv("ONR_READ_TIMEOUT_MS", "1234")
 	t.Setenv("ONR_WRITE_TIMEOUT_MS", "2345")
 	t.Setenv("ONR_OAUTH_TOKEN_PERSIST_ENABLED", "true")
@@ -76,6 +84,9 @@ upstream_proxies:
 	}
 	if cfg.Server.ReadTimeoutMs != 1234 || cfg.Server.WriteTimeoutMs != 2345 {
 		t.Fatalf("timeout not overridden: %d,%d", cfg.Server.ReadTimeoutMs, cfg.Server.WriteTimeoutMs)
+	}
+	if !cfg.Providers.AutoReload.Enabled || cfg.Providers.AutoReload.DebounceMs != 450 {
+		t.Fatalf("providers auto_reload not overridden: %+v", cfg.Providers.AutoReload)
 	}
 	if !cfg.OAuth.TokenPersist.Enabled || cfg.OAuth.TokenPersist.Dir != "/tmp/oauth" {
 		t.Fatalf("oauth token persist not overridden")
@@ -110,6 +121,16 @@ func TestValidate(t *testing.T) {
 		cfg := &Config{}
 		cfg.UpstreamProxies.ByProvider = map[string]string{}
 		cfg.TrafficDump.MaxBytes = -1
+		if err := validate(cfg); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("providers auto reload requires positive debounce", func(t *testing.T) {
+		cfg := &Config{}
+		cfg.UpstreamProxies.ByProvider = map[string]string{}
+		cfg.Providers.AutoReload.Enabled = true
+		cfg.Providers.AutoReload.DebounceMs = 0
 		if err := validate(cfg); err == nil {
 			t.Fatalf("expected error")
 		}

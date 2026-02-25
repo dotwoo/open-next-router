@@ -25,6 +25,11 @@ type Config struct {
 
 	Providers struct {
 		Dir string `yaml:"dir"`
+		// AutoReload watches providers.dir and reloads provider DSL files at runtime.
+		AutoReload struct {
+			Enabled    bool `yaml:"enabled"`
+			DebounceMs int  `yaml:"debounce_ms"`
+		} `yaml:"auto_reload"`
 	} `yaml:"providers"`
 
 	Keys struct {
@@ -115,6 +120,9 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Providers.Dir) == "" {
 		cfg.Providers.Dir = "./config/providers"
 	}
+	if cfg.Providers.AutoReload.DebounceMs <= 0 {
+		cfg.Providers.AutoReload.DebounceMs = 300
+	}
 	if strings.TrimSpace(cfg.Keys.File) == "" {
 		cfg.Keys.File = "./keys.yaml"
 	}
@@ -169,6 +177,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := strings.TrimSpace(os.Getenv("ONR_PROVIDERS_DIR")); v != "" {
 		cfg.Providers.Dir = v
+	}
+	cfg.Providers.AutoReload.Enabled = envBool("ONR_PROVIDERS_AUTO_RELOAD_ENABLED", cfg.Providers.AutoReload.Enabled)
+	if v := strings.TrimSpace(os.Getenv("ONR_PROVIDERS_AUTO_RELOAD_DEBOUNCE_MS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Providers.AutoReload.DebounceMs = n
+		}
 	}
 	if v := strings.TrimSpace(os.Getenv("ONR_KEYS_FILE")); v != "" {
 		cfg.Keys.File = v
@@ -243,6 +257,9 @@ func validate(cfg *Config) error {
 	}
 	if err := usageestimate.Validate(&cfg.UsageEstimation); err != nil {
 		return err
+	}
+	if cfg.Providers.AutoReload.Enabled && cfg.Providers.AutoReload.DebounceMs <= 0 {
+		return errors.New("providers.auto_reload.debounce_ms must be > 0 when providers.auto_reload.enabled=true")
 	}
 	if cfg.TrafficDump.MaxBytes < 0 {
 		return errors.New("traffic_dump.max_bytes must be non-negative")

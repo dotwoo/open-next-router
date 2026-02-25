@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,11 @@ import (
 	"github.com/r9s-ai/open-next-router/onr/internal/logx"
 	"github.com/r9s-ai/open-next-router/onr/internal/proxy"
 )
+
+type providersReloadResult struct {
+	LoadResult       dslconfig.LoadResult
+	ChangedProviders []string
+}
 
 func Run(cfgPath string) error {
 	startedAt := time.Now().Unix()
@@ -94,7 +100,15 @@ func Run(cfgPath string) error {
 	}
 	st.SetStartedAtUnix(startedAt)
 
-	installReloadSignalHandler(cfg, st, reg, pclient)
+	reloadMu := &sync.Mutex{}
+	installReloadSignalHandler(cfg, st, reg, pclient, reloadMu)
+	autoReloadClose, err := installProvidersAutoReload(cfg, reg, reloadMu)
+	if err != nil {
+		return fmt.Errorf("init providers auto reload: %w", err)
+	}
+	if autoReloadClose != nil {
+		defer func() { _ = autoReloadClose.Close() }()
+	}
 
 	accessFormat, err := logx.ResolveAccessLogFormat(cfg.Logging.AccessLogFormat, cfg.Logging.AccessLogFormatPreset)
 	if err != nil {
@@ -170,53 +184,76 @@ func writePIDFile(cfg *config.Config) (io.Closer, error) {
 	return closerFunc(func() error { return os.Remove(path) }), nil
 }
 
-func installReloadSignalHandler(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client) {
-	if cfg == nil || st == nil || reg == nil {
+func installReloadSignalHandler(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client, mu *sync.Mutex) {
+	if cfg == nil || st == nil || reg == nil || mu == nil {
 		return
 	}
-	var mu sync.Mutex
 	ch := make(chan os.Signal, 2)
 	signal.Notify(ch, syscall.SIGHUP)
 	go func() {
 		for range ch {
 			mu.Lock()
-			err := reloadRuntime(cfg, st, reg, pclient)
+			providersRes, err := reloadRuntime(cfg, st, reg, pclient)
 			mu.Unlock()
 			if err != nil {
-				log.Printf("reload failed: %v", err)
+				log.Printf("reload failed (signal): %v", err)
 				continue
 			}
-			log.Printf("reload ok")
+			log.Printf(
+				"reload ok (signal): providers_dir=%q changed_providers=%s keys_file=%q models_file=%q pricing_file=%q pricing_overrides_file=%q",
+				cfg.Providers.Dir,
+				providerNamesForLog(providersRes.ChangedProviders),
+				cfg.Keys.File,
+				cfg.Models.File,
+				cfg.Pricing.File,
+				cfg.Pricing.OverridesFile,
+			)
 		}
 	}()
 }
 
-func reloadRuntime(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client) error {
-	if cfg == nil || st == nil || reg == nil || pclient == nil {
-		return errors.New("reload: nil cfg/state/registry/pclient")
+func reloadProvidersRuntime(cfg *config.Config, reg *dslconfig.Registry) (providersReloadResult, error) {
+	if cfg == nil || reg == nil {
+		return providersReloadResult{}, errors.New("reload providers: nil cfg/registry")
 	}
+	before := snapshotProviderFingerprints(reg)
 	loadRes, err := reg.ReloadFromDir(cfg.Providers.Dir)
 	if err != nil {
-		return fmt.Errorf("reload providers dir %q: %w", cfg.Providers.Dir, err)
+		return providersReloadResult{}, fmt.Errorf("reload providers dir %q: %w", cfg.Providers.Dir, err)
 	}
 	logSkippedProviders(cfg.Providers.Dir, loadRes.SkippedFiles, true)
+	after := snapshotProviderFingerprints(reg)
+	return providersReloadResult{
+		LoadResult:       loadRes,
+		ChangedProviders: diffChangedProviderNames(before, after),
+	}, nil
+}
+
+func reloadRuntime(cfg *config.Config, st *state, reg *dslconfig.Registry, pclient *proxy.Client) (providersReloadResult, error) {
+	if cfg == nil || st == nil || reg == nil || pclient == nil {
+		return providersReloadResult{}, errors.New("reload: nil cfg/state/registry/pclient")
+	}
+	providersRes, err := reloadProvidersRuntime(cfg, reg)
+	if err != nil {
+		return providersReloadResult{}, err
+	}
 	ks, err := keystore.Load(cfg.Keys.File)
 	if err != nil {
-		return fmt.Errorf("reload keys file %q: %w", cfg.Keys.File, err)
+		return providersReloadResult{}, fmt.Errorf("reload keys file %q: %w", cfg.Keys.File, err)
 	}
 	mr, err := models.Load(cfg.Models.File)
 	if err != nil {
-		return fmt.Errorf("reload models file %q: %w", cfg.Models.File, err)
+		return providersReloadResult{}, fmt.Errorf("reload models file %q: %w", cfg.Models.File, err)
 	}
 	pricingResolver, err := pricing.LoadResolver(cfg.Pricing.File, cfg.Pricing.OverridesFile)
 	if err != nil {
-		return fmt.Errorf("reload pricing files failed: %w", err)
+		return providersReloadResult{}, fmt.Errorf("reload pricing files failed: %w", err)
 	}
 	st.SetKeys(ks)
 	st.SetModelRouter(mr)
 	pclient.SetPricingResolver(pricingResolver)
 	pclient.SetPricingEnabled(cfg.Pricing.Enabled)
-	return nil
+	return providersRes, nil
 }
 
 func logSkippedProviders(providersDir string, skipped []string, reloading bool) {
@@ -232,4 +269,48 @@ func logSkippedProviders(providersDir string, skipped []string, reloading bool) 
 		warn = "\x1b[1;33mWARNING\x1b[0m"
 	}
 	log.Printf("[ONR] %s [providers/%s] dir=%q skipped_invalid_files=%s", warn, phase, providersDir, strings.Join(skipped, ", "))
+}
+
+func providerNamesForLog(names []string) string {
+	if len(names) == 0 {
+		return "<none>"
+	}
+	return strings.Join(names, ",")
+}
+
+func snapshotProviderFingerprints(reg *dslconfig.Registry) map[string]string {
+	if reg == nil {
+		return map[string]string{}
+	}
+	names := reg.ListProviderNames()
+	out := make(map[string]string, len(names))
+	for _, name := range names {
+		pf, ok := reg.GetProvider(name)
+		if !ok {
+			continue
+		}
+		out[name] = providerFingerprint(pf)
+	}
+	return out
+}
+
+func providerFingerprint(pf dslconfig.ProviderFile) string {
+	return strings.TrimSpace(pf.Path) + "\x00" + pf.Content
+}
+
+func diffChangedProviderNames(before map[string]string, after map[string]string) []string {
+	changed := make([]string, 0)
+	for name, prev := range before {
+		next, ok := after[name]
+		if !ok || next != prev {
+			changed = append(changed, name)
+		}
+	}
+	for name := range after {
+		if _, ok := before[name]; !ok {
+			changed = append(changed, name)
+		}
+	}
+	sort.Strings(changed)
+	return changed
 }

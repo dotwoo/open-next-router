@@ -8,6 +8,12 @@ server:
 providers:
   # Directory containing provider DSL files (*.conf)
   dir: "./config/providers"
+  auto_reload:
+    # Watch providers.dir and reload provider DSL files automatically.
+    # Disabled by default; enable only when you need file-watch based reload.
+    enabled: false
+    # Merge rapid editor events into one reload.
+    debounce_ms: 300
 
 keys:
   # Upstream keys file (grouped by provider)

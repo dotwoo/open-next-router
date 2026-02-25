@@ -27,7 +27,7 @@ open-next-router (ONR) is a lightweight, DSL-driven LLM gateway that routes requ
 
 - **Atomic, nginx-like DSL**: runtime behavior is explicitly declared in `config/providers/*.conf` (routing, auth headers, transforms, SSE parsing, usage extraction).
 - **Fast provider onboarding and patching**: fix provider quirks by editing a `.conf` file instead of changing and redeploying code.
-- **Hot reload**: reload `onr.yaml` / `keys.yaml` / `models.yaml` / provider DSL files via SIGHUP, minimizing downtime.
+- **Hot reload**: reload `onr.yaml` / `keys.yaml` / `models.yaml` / provider DSL files via SIGHUP; provider DSL can also auto-reload by file watch (opt-in).
 - **No hidden magic**: compatibility is opt-in via directives (e.g. `req_map`, `resp_map`, `sse_parse`, `json_del`, `set_header`) rather than implicit heuristics.
 - **Streaming-aware normalization**: handle SSE framing and provider-specific streaming semantics while keeping a stable client-facing API.
 - **Operational visibility**: one-line request logs with optional usage/cost extraction help you debug channels and control spend.
@@ -161,6 +161,16 @@ go run ./cmd/onr --config ./onr.yaml -s reload
 
 This uses `server.pid_file` (default: `/var/run/onr.pid`).
 
+Optional: enable provider DSL auto-reload by file watch (disabled by default):
+
+```yaml
+providers:
+  dir: "./config/providers"
+  auto_reload:
+    enabled: true
+    debounce_ms: 300
+```
+
 4) Test config (nginx-like)
 
 Test configs without starting the server:
@@ -258,6 +268,7 @@ Observability:
 
 Config reload:
 - Send SIGHUP to reload `onr.yaml` / `keys.yaml` / `models.yaml` / `config/providers/*.conf` (nginx-like)
+- Optional: enable `providers.auto_reload.enabled=true` to watch `providers.dir` and auto-reload provider DSL files
 ```
 
 ## Auth
