@@ -202,7 +202,7 @@
 
       curlOutputEl.value = curl;
       if (!ctx.k && ctx.uk) {
-        setStatus("Generated token with uk only. If your ONR auth requires k, this request may be rejected.");
+        setStatus("Generated token with uk only. If auth.token_key.allow_byok_without_k=false, this request will be rejected.");
       }
     }
 
@@ -231,7 +231,7 @@
       }
       execOutputEl.textContent = formatCurlLikeResponse(data, true);
       if (!ctx.k && ctx.uk) {
-        setStatus("Request executed with uk only. If ONR auth requires k, server may reject this mode.");
+        setStatus("Request executed with uk only. If auth.token_key.allow_byok_without_k=false, this request will be rejected.");
       }
     }
 

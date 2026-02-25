@@ -43,3 +43,32 @@ func TestParseTokenKeyV1_UK64PreferredOverUK(t *testing.T) {
 		t.Fatalf("upstream=%q", claims.UpstreamKey)
 	}
 }
+
+func TestParseTokenKeyV1_MissingK_AllowBYOKWithoutK(t *testing.T) {
+	claims, accessKey, err := ParseTokenKeyV1WithOptions(
+		"onr:v1?uk=sk-upstream&p=openai",
+		TokenParseOptions{AllowBYOKWithoutK: true},
+	)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if claims.Mode != TokenModeBYOK {
+		t.Fatalf("mode=%q", claims.Mode)
+	}
+	if claims.UpstreamKey != "sk-upstream" {
+		t.Fatalf("upstream=%q", claims.UpstreamKey)
+	}
+	if accessKey != "" {
+		t.Fatalf("accessKey=%q", accessKey)
+	}
+}
+
+func TestParseTokenKeyV1_MissingK_DisallowBYOKWithoutK(t *testing.T) {
+	_, _, err := ParseTokenKeyV1WithOptions(
+		"onr:v1?uk=sk-upstream&p=openai",
+		TokenParseOptions{AllowBYOKWithoutK: false},
+	)
+	if err == nil || err.Error() != "missing k or k64" {
+		t.Fatalf("err=%v", err)
+	}
+}

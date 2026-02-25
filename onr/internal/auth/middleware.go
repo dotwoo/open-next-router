@@ -10,8 +10,16 @@ import (
 
 type AccessKeyMatcher func(accessKey string) (name string, ok bool)
 
-func Middleware(masterKey string, matchAccessKey AccessKeyMatcher) gin.HandlerFunc {
+type TokenKeyOptions struct {
+	AllowBYOKWithoutK bool
+}
+
+func Middleware(masterKey string, matchAccessKey AccessKeyMatcher, tokenOpts ...TokenKeyOptions) gin.HandlerFunc {
 	expected := strings.TrimSpace(masterKey)
+	allowBYOKWithoutK := false
+	if len(tokenOpts) > 0 {
+		allowBYOKWithoutK = tokenOpts[0].AllowBYOKWithoutK
+	}
 	return func(c *gin.Context) {
 		got := ""
 		if v := strings.TrimSpace(c.GetHeader("Authorization")); strings.HasPrefix(v, "Bearer ") {
@@ -38,14 +46,20 @@ func Middleware(masterKey string, matchAccessKey AccessKeyMatcher) gin.HandlerFu
 
 		// Token key: onr:v1?... (no-sig, editable)
 		if IsTokenKey(got) {
-			claims, accessKey, err := ParseTokenKeyV1(got)
-			if err == nil && claims != nil && strings.TrimSpace(accessKey) != "" {
+			claims, accessKey, err := ParseTokenKeyV1WithOptions(got, TokenParseOptions{
+				AllowBYOKWithoutK: allowBYOKWithoutK,
+			})
+			if err == nil && claims != nil {
 				ok := false
-				if expected != "" && subtle.ConstantTimeCompare([]byte(accessKey), []byte(expected)) == 1 {
+				if strings.TrimSpace(accessKey) != "" {
+					if expected != "" && subtle.ConstantTimeCompare([]byte(accessKey), []byte(expected)) == 1 {
+						ok = true
+					}
+					if !ok && matchAccessKey != nil {
+						_, ok = matchAccessKey(accessKey)
+					}
+				} else if allowBYOKWithoutK && claims.Mode == TokenModeBYOK && strings.TrimSpace(claims.UpstreamKey) != "" {
 					ok = true
-				}
-				if !ok && matchAccessKey != nil {
-					_, ok = matchAccessKey(accessKey)
 				}
 				if ok {
 					if claims.Provider != "" {

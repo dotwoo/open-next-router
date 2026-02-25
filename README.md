@@ -292,9 +292,18 @@ or
 
 Supported query params:
 
+- `k` / `k64`: access key (required by default)
 - `p`: provider (optional)
 - `m`: model override (optional; always enforced)
 - `uk`: BYOK upstream key (optional; when set, ONR uses it directly to call upstream)
+
+Optional config to allow BYOK token without `k`/`k64` (default: false):
+
+```yaml
+auth:
+  token_key:
+    allow_byok_without_k: true
+```
 
 Generate a token key:
 

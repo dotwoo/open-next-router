@@ -21,6 +21,12 @@ type Config struct {
 
 	Auth struct {
 		APIKey string `yaml:"api_key"`
+		// TokenKey controls onr:v1 token-key auth behavior.
+		TokenKey struct {
+			// AllowBYOKWithoutK allows BYOK token keys that only contain uk/uk64 without k/k64.
+			// Default false for safety.
+			AllowBYOKWithoutK bool `yaml:"allow_byok_without_k"`
+		} `yaml:"token_key"`
 	} `yaml:"auth"`
 
 	Providers struct {
@@ -175,6 +181,7 @@ func applyEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_API_KEY")); v != "" {
 		cfg.Auth.APIKey = v
 	}
+	cfg.Auth.TokenKey.AllowBYOKWithoutK = envBool("ONR_TOKEN_KEY_ALLOW_BYOK_WITHOUT_K", cfg.Auth.TokenKey.AllowBYOKWithoutK)
 	if v := strings.TrimSpace(os.Getenv("ONR_PROVIDERS_DIR")); v != "" {
 		cfg.Providers.Dir = v
 	}

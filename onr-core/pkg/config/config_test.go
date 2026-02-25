@@ -27,6 +27,9 @@ auth:
 	if cfg.Server.Listen != ":3300" {
 		t.Fatalf("default listen=%q", cfg.Server.Listen)
 	}
+	if cfg.Auth.TokenKey.AllowBYOKWithoutK {
+		t.Fatalf("auth.token_key.allow_byok_without_k default should be false")
+	}
 	if cfg.Keys.File == "" || cfg.Models.File == "" || cfg.Providers.Dir == "" {
 		t.Fatalf("expected default paths")
 	}
@@ -57,6 +60,7 @@ upstream_proxies:
     qwen: "http://127.0.0.1:8081"
 `)
 	t.Setenv("ONR_API_KEY", "k2")
+	t.Setenv("ONR_TOKEN_KEY_ALLOW_BYOK_WITHOUT_K", "true")
 	t.Setenv("ONR_LISTEN", ":9999")
 	t.Setenv("ONR_PROVIDERS_AUTO_RELOAD_ENABLED", "1")
 	t.Setenv("ONR_PROVIDERS_AUTO_RELOAD_DEBOUNCE_MS", "450")
@@ -78,6 +82,9 @@ upstream_proxies:
 	}
 	if cfg.Auth.APIKey != "k2" {
 		t.Fatalf("api key not overridden")
+	}
+	if !cfg.Auth.TokenKey.AllowBYOKWithoutK {
+		t.Fatalf("token_key allow_byok_without_k not overridden")
 	}
 	if cfg.Server.Listen != ":9999" {
 		t.Fatalf("listen not overridden: %q", cfg.Server.Listen)

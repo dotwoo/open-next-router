@@ -33,6 +33,10 @@ type TokenClaims struct {
 	Mode          TokenMode
 }
 
+type TokenParseOptions struct {
+	AllowBYOKWithoutK bool
+}
+
 func IsTokenKey(raw string) bool {
 	return strings.HasPrefix(strings.TrimSpace(raw), "onr:v1?")
 }
@@ -43,11 +47,15 @@ func IsTokenKey(raw string) bool {
 //	onr:v1?k64=<base64url(access_key)>&...
 //
 // Supported query params:
-// - k / k64: access key (required)
+// - k / k64: access key (required by default; optional only when AllowBYOKWithoutK=true and uk/uk64 exists)
 // - p: provider (optional)
 // - m: model_override (optional)
 // - uk / uk64: upstream key for BYOK (optional; implies mode=byok)
 func ParseTokenKeyV1(raw string) (*TokenClaims, string, error) {
+	return ParseTokenKeyV1WithOptions(raw, TokenParseOptions{})
+}
+
+func ParseTokenKeyV1WithOptions(raw string, opts TokenParseOptions) (*TokenClaims, string, error) {
 	s := strings.TrimSpace(raw)
 	if !strings.HasPrefix(s, "onr:v1?") {
 		return nil, "", fmt.Errorf("not an onr:v1 token key")
@@ -56,6 +64,17 @@ func ParseTokenKeyV1(raw string) (*TokenClaims, string, error) {
 	vals, err := url.ParseQuery(qraw)
 	if err != nil {
 		return nil, "", fmt.Errorf("invalid token query: %w", err)
+	}
+
+	upstreamKey := ""
+	if uk64 := strings.TrimSpace(vals.Get("uk64")); uk64 != "" {
+		b, err := base64.RawURLEncoding.Strict().DecodeString(uk64)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid uk64")
+		}
+		upstreamKey = strings.TrimSpace(string(b))
+	} else {
+		upstreamKey = strings.TrimSpace(vals.Get("uk"))
 	}
 
 	accessKey := ""
@@ -68,18 +87,9 @@ func ParseTokenKeyV1(raw string) (*TokenClaims, string, error) {
 	} else if k := strings.TrimSpace(vals.Get("k")); k != "" {
 		accessKey = k
 	} else {
-		return nil, "", fmt.Errorf("missing k or k64")
-	}
-
-	upstreamKey := ""
-	if uk64 := strings.TrimSpace(vals.Get("uk64")); uk64 != "" {
-		b, err := base64.RawURLEncoding.Strict().DecodeString(uk64)
-		if err != nil {
-			return nil, "", fmt.Errorf("invalid uk64")
+		if !opts.AllowBYOKWithoutK || upstreamKey == "" {
+			return nil, "", fmt.Errorf("missing k or k64")
 		}
-		upstreamKey = strings.TrimSpace(string(b))
-	} else {
-		upstreamKey = strings.TrimSpace(vals.Get("uk"))
 	}
 
 	claims := &TokenClaims{

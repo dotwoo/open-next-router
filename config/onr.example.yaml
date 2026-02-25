@@ -1,3 +1,11 @@
+auth:
+  # Optional master key for incoming requests.
+  api_key: ""
+  token_key:
+    # Keep requiring k/k64 in onr:v1 token by default.
+    # Set true to allow BYOK token with only uk/uk64.
+    allow_byok_without_k: false
+
 server:
   listen: ":3300"
   read_timeout_ms: 60000
