@@ -585,6 +585,7 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${STATE_DIR}
+Environment=GIN_MODE=release
 EnvironmentFile=-${ENV_FILE}
 ExecStart=${BIN_DIR}/onr --config ${CONFIG_FILE}
 ExecReload=/bin/kill -HUP \$MAINPID
