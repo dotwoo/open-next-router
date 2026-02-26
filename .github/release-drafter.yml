@@ -72,13 +72,13 @@ no-changes-template: 'No changes in this release.'
 # Template for the release body
 template: |
   ## What's Changed
-  
+
   $CHANGES
-  
+
   ## Contributors
-  
+
   Thanks to all contributors who made this release possible! 🎉
-  
+
   $CONTRIBUTORS
 
 # Auto labeling based on branch names and commit messages

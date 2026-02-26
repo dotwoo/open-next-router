@@ -1,4 +1,4 @@
-.PHONY: run build build-all test version release-dry release-snapshot clean help
+.PHONY: run build build-all test version release-dry release-snapshot clean help hooks
 
 # Get version from root release tags only (ignore submodule tags like onr-core/v*)
 VERSION ?= $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo "dev")
@@ -55,6 +55,9 @@ fmt: ## Format code
 
 lint: ## Run linter (requires golangci-lint)
 	golangci-lint run
+
+hooks: ## Run prek hooks on all files
+	prek run --all-files
 
 .PHONY: install-tools
 install-tools: ## Install development tools

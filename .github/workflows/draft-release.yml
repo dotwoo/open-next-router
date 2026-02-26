@@ -19,7 +19,7 @@ jobs:
   update-release-draft:
     name: Update Draft Release
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Update Release Draft
         uses: release-drafter/release-drafter@v6

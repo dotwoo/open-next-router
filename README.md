@@ -186,6 +186,16 @@ go run ./cmd/onr -t -c ./onr.yaml
 go run ./cmd/onr -t ./onr.yaml
 ```
 
+5) Setup Git hooks with prek
+
+```bash
+# install git hooks (force-replace if pre-commit hooks already exist)
+prek install -f
+
+# run all hooks manually
+prek run --all-files
+```
+
 ## Docker Compose
 
 Create runtime config files first:
