@@ -9,11 +9,11 @@ import (
 	"syscall"
 
 	"github.com/r9s-ai/open-next-router/internal/version"
-	"github.com/r9s-ai/open-next-router/onr-core/pkg/config"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/keystore"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/models"
 	"github.com/r9s-ai/open-next-router/onr/internal/onrserver"
+	"github.com/r9s-ai/open-next-router/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -123,7 +123,7 @@ func sendReloadSignal(cfgPath string) error {
 }
 
 func pidFileFromConfig(cfgPath string) (string, error) {
-	// Default must match onr-core/pkg/config defaults.
+	// Default must match pkg/config defaults.
 	const def = "/var/run/onr.pid"
 	path := strings.TrimSpace(cfgPath)
 	if path == "" {

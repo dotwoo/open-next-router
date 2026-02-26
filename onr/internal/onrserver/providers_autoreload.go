@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/r9s-ai/open-next-router/onr-core/pkg/config"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslconfig"
+	"github.com/r9s-ai/open-next-router/pkg/config"
 )
 
 func installProvidersAutoReload(cfg *config.Config, reg *dslconfig.Registry, mu *sync.Mutex) (io.Closer, error) {

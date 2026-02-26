@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/r9s-ai/open-next-router/onr-core/pkg/config"
 	"github.com/r9s-ai/open-next-router/onr/internal/logx"
+	"github.com/r9s-ai/open-next-router/pkg/config"
 )
 
 func TestOpenAccessLogger_RotateEnabled(t *testing.T) {

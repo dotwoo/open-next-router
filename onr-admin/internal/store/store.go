@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/r9s-ai/open-next-router/onr-core/pkg/config"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/keystore"
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/models"
+	"github.com/r9s-ai/open-next-router/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 
