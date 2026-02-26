@@ -48,6 +48,21 @@ auth:
 	if cfg.Logging.AppNameInfer.Enabled {
 		t.Fatalf("logging.appname_infer.enabled default should be false")
 	}
+	if cfg.Logging.AccessLogRotate.Enabled {
+		t.Fatalf("logging.access_log_rotate.enabled default should be false")
+	}
+	if cfg.Logging.AccessLogRotate.MaxSizeMB != 100 {
+		t.Fatalf("logging.access_log_rotate.max_size_mb default=%d", cfg.Logging.AccessLogRotate.MaxSizeMB)
+	}
+	if cfg.Logging.AccessLogRotate.MaxBackups != 14 {
+		t.Fatalf("logging.access_log_rotate.max_backups default=%d", cfg.Logging.AccessLogRotate.MaxBackups)
+	}
+	if cfg.Logging.AccessLogRotate.MaxAgeDays != 14 {
+		t.Fatalf("logging.access_log_rotate.max_age_days default=%d", cfg.Logging.AccessLogRotate.MaxAgeDays)
+	}
+	if cfg.Logging.AccessLogRotate.Compress {
+		t.Fatalf("logging.access_log_rotate.compress default should be false")
+	}
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
@@ -73,8 +88,14 @@ upstream_proxies:
 	t.Setenv("ONR_TRAFFIC_DUMP_MASK_SECRETS", "off")
 	t.Setenv("ONR_UPSTREAM_PROXY_OPENAI", "http://127.0.0.1:8888")
 	t.Setenv("ONR_UPSTREAM_PROXY_QWEN", "")
+	t.Setenv("ONR_ACCESS_LOG_PATH", "/tmp/access.log")
 	t.Setenv("ONR_ACCESS_LOG_FORMAT", "$method $path")
 	t.Setenv("ONR_ACCESS_LOG_FORMAT_PRESET", "onr_minimal")
+	t.Setenv("ONR_ACCESS_LOG_ROTATE_ENABLED", "true")
+	t.Setenv("ONR_ACCESS_LOG_ROTATE_MAX_SIZE_MB", "128")
+	t.Setenv("ONR_ACCESS_LOG_ROTATE_MAX_BACKUPS", "30")
+	t.Setenv("ONR_ACCESS_LOG_ROTATE_MAX_AGE_DAYS", "7")
+	t.Setenv("ONR_ACCESS_LOG_ROTATE_COMPRESS", "1")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -113,11 +134,89 @@ upstream_proxies:
 	if cfg.Logging.AccessLogFormatPreset != "onr_minimal" {
 		t.Fatalf("access_log_format_preset not overridden: %q", cfg.Logging.AccessLogFormatPreset)
 	}
+	if !cfg.Logging.AccessLogRotate.Enabled {
+		t.Fatalf("access_log_rotate.enabled not overridden")
+	}
+	if cfg.Logging.AccessLogRotate.MaxSizeMB != 128 {
+		t.Fatalf("access_log_rotate.max_size_mb not overridden: %d", cfg.Logging.AccessLogRotate.MaxSizeMB)
+	}
+	if cfg.Logging.AccessLogRotate.MaxBackups != 30 {
+		t.Fatalf("access_log_rotate.max_backups not overridden: %d", cfg.Logging.AccessLogRotate.MaxBackups)
+	}
+	if cfg.Logging.AccessLogRotate.MaxAgeDays != 7 {
+		t.Fatalf("access_log_rotate.max_age_days not overridden: %d", cfg.Logging.AccessLogRotate.MaxAgeDays)
+	}
+	if !cfg.Logging.AccessLogRotate.Compress {
+		t.Fatalf("access_log_rotate.compress not overridden")
+	}
+}
+
+func TestLoad_AccessLogRotateYAMLValidation(t *testing.T) {
+	t.Run("explicit zero max_size_mb should fail", func(t *testing.T) {
+		path := writeConfigFile(t, `
+auth:
+  api_key: "k"
+logging:
+  access_log: true
+  access_log_path: "./logs/access.log"
+  access_log_rotate:
+    enabled: true
+    max_size_mb: 0
+`)
+		if _, err := Load(path); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("explicit zero max_backups should fail", func(t *testing.T) {
+		path := writeConfigFile(t, `
+auth:
+  api_key: "k"
+logging:
+  access_log: true
+  access_log_path: "./logs/access.log"
+  access_log_rotate:
+    enabled: true
+    max_backups: 0
+`)
+		if _, err := Load(path); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("max_age_days can be zero", func(t *testing.T) {
+		path := writeConfigFile(t, `
+auth:
+  api_key: "k"
+logging:
+  access_log: true
+  access_log_path: "./logs/access.log"
+  access_log_rotate:
+    enabled: true
+    max_age_days: 0
+`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load err=%v", err)
+		}
+		if cfg.Logging.AccessLogRotate.MaxAgeDays != 0 {
+			t.Fatalf("expected max_age_days=0, got %d", cfg.Logging.AccessLogRotate.MaxAgeDays)
+		}
+	})
 }
 
 func TestValidate(t *testing.T) {
-	t.Run("invalid proxy url", func(t *testing.T) {
+	newValidConfig := func() *Config {
 		cfg := &Config{}
+		cfg.UpstreamProxies.ByProvider = map[string]string{}
+		cfg.Logging.AccessLogRotate.MaxSizeMB = 100
+		cfg.Logging.AccessLogRotate.MaxBackups = 14
+		cfg.Logging.AccessLogRotate.MaxAgeDays = 14
+		return cfg
+	}
+
+	t.Run("invalid proxy url", func(t *testing.T) {
+		cfg := newValidConfig()
 		cfg.UpstreamProxies.ByProvider = map[string]string{"openai": "127.0.0.1:7890"}
 		if err := validate(cfg); err == nil {
 			t.Fatalf("expected error")
@@ -125,8 +224,7 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("invalid traffic max bytes", func(t *testing.T) {
-		cfg := &Config{}
-		cfg.UpstreamProxies.ByProvider = map[string]string{}
+		cfg := newValidConfig()
 		cfg.TrafficDump.MaxBytes = -1
 		if err := validate(cfg); err == nil {
 			t.Fatalf("expected error")
@@ -134,8 +232,7 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("providers auto reload requires positive debounce", func(t *testing.T) {
-		cfg := &Config{}
-		cfg.UpstreamProxies.ByProvider = map[string]string{}
+		cfg := newValidConfig()
 		cfg.Providers.AutoReload.Enabled = true
 		cfg.Providers.AutoReload.DebounceMs = 0
 		if err := validate(cfg); err == nil {
@@ -144,10 +241,53 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("oauth enabled requires dir", func(t *testing.T) {
-		cfg := &Config{}
-		cfg.UpstreamProxies.ByProvider = map[string]string{}
+		cfg := newValidConfig()
 		cfg.OAuth.TokenPersist.Enabled = true
 		cfg.OAuth.TokenPersist.Dir = "  "
+		if err := validate(cfg); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("access log rotate enabled requires access log", func(t *testing.T) {
+		cfg := newValidConfig()
+		cfg.Logging.AccessLog = false
+		cfg.Logging.AccessLogPath = "./logs/access.log"
+		cfg.Logging.AccessLogRotate.Enabled = true
+		if err := validate(cfg); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("access log rotate enabled requires non-empty path", func(t *testing.T) {
+		cfg := newValidConfig()
+		cfg.Logging.AccessLog = true
+		cfg.Logging.AccessLogPath = " "
+		cfg.Logging.AccessLogRotate.Enabled = true
+		if err := validate(cfg); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("invalid access log rotate max_size_mb", func(t *testing.T) {
+		cfg := newValidConfig()
+		cfg.Logging.AccessLogRotate.MaxSizeMB = 0
+		if err := validate(cfg); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("invalid access log rotate max_backups", func(t *testing.T) {
+		cfg := newValidConfig()
+		cfg.Logging.AccessLogRotate.MaxBackups = 0
+		if err := validate(cfg); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("invalid access log rotate max_age_days", func(t *testing.T) {
+		cfg := newValidConfig()
+		cfg.Logging.AccessLogRotate.MaxAgeDays = -1
 		if err := validate(cfg); err == nil {
 			t.Fatalf("expected error")
 		}

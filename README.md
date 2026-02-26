@@ -501,6 +501,23 @@ Captured sections:
 - `=== UPSTREAM RESPONSE ===`
 - `=== PROXY RESPONSE ===`
 
+## Access Log Rotation
+
+Built-in access log rotation is optional and applies to file output (`logging.access_log_path`).
+
+Configuration (config or env):
+
+- `logging.access_log_rotate.enabled` / `ONR_ACCESS_LOG_ROTATE_ENABLED`
+- `logging.access_log_rotate.max_size_mb` / `ONR_ACCESS_LOG_ROTATE_MAX_SIZE_MB`
+- `logging.access_log_rotate.max_backups` / `ONR_ACCESS_LOG_ROTATE_MAX_BACKUPS`
+- `logging.access_log_rotate.max_age_days` / `ONR_ACCESS_LOG_ROTATE_MAX_AGE_DAYS`
+- `logging.access_log_rotate.compress` / `ONR_ACCESS_LOG_ROTATE_COMPRESS`
+
+Notes:
+
+- When `logging.access_log_rotate.enabled=true`, `logging.access_log_path` must be non-empty.
+- Rotation triggers on day boundary (local time) or when the file size threshold is exceeded.
+
 # Partnership
 
 <a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2Fr9s-ai%2Fopen-next-router" target="_blank"><img src="https://llmapis.com/api/badge/r9s-ai/open-next-router" alt="LLMAPIS" width="60" /></a>

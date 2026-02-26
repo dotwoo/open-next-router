@@ -84,6 +84,12 @@ logging:
   # - access_log_format: optional custom format with $variables; non-empty has highest priority
   # - access_log_format_preset: optional preset used only when access_log_format is empty
   #   presets: onr_combined / onr_minimal
+  # - access_log_rotate: optional built-in log rotation for file logs (disabled by default)
+  #   - enabled: require access_log=true and non-empty access_log_path
+  #   - max_size_mb: rotate when current file size would exceed this threshold
+  #   - max_backups: keep only the latest N archived files
+  #   - max_age_days: delete archives older than N days (0 disables age-based deletion)
+  #   - compress: gzip archived files after rotation
   #   Available variables:
   #   $time_local $status $latency $latency_ms $client_ip $method $path
   #   $request_id $appname $provider $provider_source $api $stream $model
@@ -98,6 +104,12 @@ logging:
   access_log_path: ""
   access_log_format: ""
   access_log_format_preset: ""
+  access_log_rotate:
+    enabled: false
+    max_size_mb: 100
+    max_backups: 14
+    max_age_days: 14
+    compress: false
   appname_infer:
     enabled: false
     unknown: ""

@@ -11,6 +11,77 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultAccessLogRotateMaxSizeMB  = 100
+	defaultAccessLogRotateMaxBackups = 14
+	defaultAccessLogRotateMaxAgeDays = 14
+)
+
+type AccessLogRotateConfig struct {
+	Enabled    bool `yaml:"enabled"`
+	MaxSizeMB  int  `yaml:"max_size_mb"`
+	MaxBackups int  `yaml:"max_backups"`
+	MaxAgeDays int  `yaml:"max_age_days"`
+	Compress   bool `yaml:"compress"`
+
+	maxSizeMBSet  bool `yaml:"-"`
+	maxBackupsSet bool `yaml:"-"`
+	maxAgeDaysSet bool `yaml:"-"`
+}
+
+func (c *AccessLogRotateConfig) UnmarshalYAML(value *yaml.Node) error {
+	type rawRotate struct {
+		Enabled    bool `yaml:"enabled"`
+		MaxSizeMB  int  `yaml:"max_size_mb"`
+		MaxBackups int  `yaml:"max_backups"`
+		MaxAgeDays int  `yaml:"max_age_days"`
+		Compress   bool `yaml:"compress"`
+	}
+	var raw rawRotate
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Enabled = raw.Enabled
+	c.MaxSizeMB = raw.MaxSizeMB
+	c.MaxBackups = raw.MaxBackups
+	c.MaxAgeDays = raw.MaxAgeDays
+	c.Compress = raw.Compress
+	c.maxSizeMBSet = false
+	c.maxBackupsSet = false
+	c.maxAgeDaysSet = false
+
+	if value.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		key := strings.TrimSpace(value.Content[i].Value)
+		switch key {
+		case "max_size_mb":
+			c.maxSizeMBSet = true
+		case "max_backups":
+			c.maxBackupsSet = true
+		case "max_age_days":
+			c.maxAgeDaysSet = true
+		}
+	}
+	return nil
+}
+
+type AppNameInferConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Unknown string `yaml:"unknown"`
+}
+
+type LoggingConfig struct {
+	Level                 string                `yaml:"level"`
+	AccessLog             bool                  `yaml:"access_log"`
+	AccessLogPath         string                `yaml:"access_log_path"`
+	AccessLogFormat       string                `yaml:"access_log_format"`
+	AccessLogFormatPreset string                `yaml:"access_log_format_preset"`
+	AccessLogRotate       AccessLogRotateConfig `yaml:"access_log_rotate"`
+	AppNameInfer          AppNameInferConfig    `yaml:"appname_infer"`
+}
+
 type Config struct {
 	Server struct {
 		Listen         string `yaml:"listen"`
@@ -79,17 +150,7 @@ type Config struct {
 		MaskSecrets bool   `yaml:"mask_secrets"`
 	} `yaml:"traffic_dump"`
 
-	Logging struct {
-		Level                 string `yaml:"level"`
-		AccessLog             bool   `yaml:"access_log"`
-		AccessLogPath         string `yaml:"access_log_path"`
-		AccessLogFormat       string `yaml:"access_log_format"`
-		AccessLogFormatPreset string `yaml:"access_log_format_preset"`
-		AppNameInfer          struct {
-			Enabled bool   `yaml:"enabled"`
-			Unknown string `yaml:"unknown"`
-		} `yaml:"appname_infer"`
-	} `yaml:"logging"`
+	Logging LoggingConfig `yaml:"logging"`
 }
 
 func Load(path string) (*Config, error) {
@@ -172,9 +233,26 @@ func applyDefaults(cfg *Config) {
 	if !cfg.Logging.AccessLog {
 		cfg.Logging.AccessLog = true
 	}
+	if !cfg.Logging.AccessLogRotate.maxSizeMBSet {
+		cfg.Logging.AccessLogRotate.MaxSizeMB = defaultAccessLogRotateMaxSizeMB
+	}
+	if !cfg.Logging.AccessLogRotate.maxBackupsSet {
+		cfg.Logging.AccessLogRotate.MaxBackups = defaultAccessLogRotateMaxBackups
+	}
+	if !cfg.Logging.AccessLogRotate.maxAgeDaysSet {
+		cfg.Logging.AccessLogRotate.MaxAgeDays = defaultAccessLogRotateMaxAgeDays
+	}
 }
 
 func applyEnvOverrides(cfg *Config) {
+	applyEnvServerAuthOverrides(cfg)
+	applyEnvProviderAndDataOverrides(cfg)
+	applyProviderProxyEnvOverrides(cfg)
+	applyEnvTrafficDumpOverrides(cfg)
+	applyEnvLoggingOverrides(cfg)
+}
+
+func applyEnvServerAuthOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_LISTEN")); v != "" {
 		cfg.Server.Listen = v
 	}
@@ -182,14 +260,24 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Auth.APIKey = v
 	}
 	cfg.Auth.TokenKey.AllowBYOKWithoutK = envBool("ONR_TOKEN_KEY_ALLOW_BYOK_WITHOUT_K", cfg.Auth.TokenKey.AllowBYOKWithoutK)
+	if n, ok := envInt("ONR_READ_TIMEOUT_MS"); ok && n > 0 {
+		cfg.Server.ReadTimeoutMs = n
+	}
+	if n, ok := envInt("ONR_WRITE_TIMEOUT_MS"); ok && n > 0 {
+		cfg.Server.WriteTimeoutMs = n
+	}
+	if v := strings.TrimSpace(os.Getenv("ONR_PID_FILE")); v != "" {
+		cfg.Server.PidFile = v
+	}
+}
+
+func applyEnvProviderAndDataOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_PROVIDERS_DIR")); v != "" {
 		cfg.Providers.Dir = v
 	}
 	cfg.Providers.AutoReload.Enabled = envBool("ONR_PROVIDERS_AUTO_RELOAD_ENABLED", cfg.Providers.AutoReload.Enabled)
-	if v := strings.TrimSpace(os.Getenv("ONR_PROVIDERS_AUTO_RELOAD_DEBOUNCE_MS")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.Providers.AutoReload.DebounceMs = n
-		}
+	if n, ok := envInt("ONR_PROVIDERS_AUTO_RELOAD_DEBOUNCE_MS"); ok {
+		cfg.Providers.AutoReload.DebounceMs = n
 	}
 	if v := strings.TrimSpace(os.Getenv("ONR_KEYS_FILE")); v != "" {
 		cfg.Keys.File = v
@@ -209,10 +297,10 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Pricing.OverridesFile = v
 	}
 
-	applyProviderProxyEnvOverrides(cfg)
-
 	cfg.UsageEstimation.Enabled = envBool("ONR_USAGE_ESTIMATION_ENABLED", cfg.UsageEstimation.Enabled)
+}
 
+func applyEnvTrafficDumpOverrides(cfg *Config) {
 	cfg.TrafficDump.Enabled = envBool("ONR_TRAFFIC_DUMP_ENABLED", cfg.TrafficDump.Enabled)
 	if v := strings.TrimSpace(os.Getenv("ONR_TRAFFIC_DUMP_DIR")); v != "" {
 		cfg.TrafficDump.Dir = v
@@ -220,25 +308,13 @@ func applyEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_TRAFFIC_DUMP_FILE_PATH")); v != "" {
 		cfg.TrafficDump.FilePath = v
 	}
-	if v := strings.TrimSpace(os.Getenv("ONR_TRAFFIC_DUMP_MAX_BYTES")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.TrafficDump.MaxBytes = n
-		}
+	if n, ok := envInt("ONR_TRAFFIC_DUMP_MAX_BYTES"); ok {
+		cfg.TrafficDump.MaxBytes = n
 	}
 	cfg.TrafficDump.MaskSecrets = envBool("ONR_TRAFFIC_DUMP_MASK_SECRETS", cfg.TrafficDump.MaskSecrets)
-	if v := strings.TrimSpace(os.Getenv("ONR_READ_TIMEOUT_MS")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			cfg.Server.ReadTimeoutMs = n
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("ONR_WRITE_TIMEOUT_MS")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			cfg.Server.WriteTimeoutMs = n
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("ONR_PID_FILE")); v != "" {
-		cfg.Server.PidFile = v
-	}
+}
+
+func applyEnvLoggingOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_ACCESS_LOG_PATH")); v != "" {
 		cfg.Logging.AccessLogPath = v
 	}
@@ -248,6 +324,32 @@ func applyEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("ONR_ACCESS_LOG_FORMAT_PRESET")); v != "" {
 		cfg.Logging.AccessLogFormatPreset = v
 	}
+	cfg.Logging.AccessLogRotate.Enabled = envBool("ONR_ACCESS_LOG_ROTATE_ENABLED", cfg.Logging.AccessLogRotate.Enabled)
+	if n, ok := envInt("ONR_ACCESS_LOG_ROTATE_MAX_SIZE_MB"); ok {
+		cfg.Logging.AccessLogRotate.MaxSizeMB = n
+		cfg.Logging.AccessLogRotate.maxSizeMBSet = true
+	}
+	if n, ok := envInt("ONR_ACCESS_LOG_ROTATE_MAX_BACKUPS"); ok {
+		cfg.Logging.AccessLogRotate.MaxBackups = n
+		cfg.Logging.AccessLogRotate.maxBackupsSet = true
+	}
+	if n, ok := envInt("ONR_ACCESS_LOG_ROTATE_MAX_AGE_DAYS"); ok {
+		cfg.Logging.AccessLogRotate.MaxAgeDays = n
+		cfg.Logging.AccessLogRotate.maxAgeDaysSet = true
+	}
+	cfg.Logging.AccessLogRotate.Compress = envBool("ONR_ACCESS_LOG_ROTATE_COMPRESS", cfg.Logging.AccessLogRotate.Compress)
+}
+
+func envInt(name string) (int, bool) {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 func validate(cfg *Config) error {
@@ -273,6 +375,23 @@ func validate(cfg *Config) error {
 	}
 	if cfg.OAuth.TokenPersist.Enabled && strings.TrimSpace(cfg.OAuth.TokenPersist.Dir) == "" {
 		return errors.New("oauth.token_persist.dir is required when oauth.token_persist.enabled=true")
+	}
+	if cfg.Logging.AccessLogRotate.Enabled {
+		if !cfg.Logging.AccessLog {
+			return errors.New("logging.access_log must be true when logging.access_log_rotate.enabled=true")
+		}
+		if strings.TrimSpace(cfg.Logging.AccessLogPath) == "" {
+			return errors.New("logging.access_log_path is required when logging.access_log_rotate.enabled=true")
+		}
+	}
+	if cfg.Logging.AccessLogRotate.MaxSizeMB <= 0 {
+		return errors.New("logging.access_log_rotate.max_size_mb must be > 0")
+	}
+	if cfg.Logging.AccessLogRotate.MaxBackups <= 0 {
+		return errors.New("logging.access_log_rotate.max_backups must be > 0")
+	}
+	if cfg.Logging.AccessLogRotate.MaxAgeDays < 0 {
+		return errors.New("logging.access_log_rotate.max_age_days must be >= 0")
 	}
 	return nil
 }

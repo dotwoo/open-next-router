@@ -133,9 +133,25 @@ func openAccessLogger(cfg *config.Config) (*log.Logger, io.Closer, bool, error) 
 	}
 
 	path := strings.TrimSpace(cfg.Logging.AccessLogPath)
+	if cfg.Logging.AccessLogRotate.Enabled && path == "" {
+		return nil, nil, false, errors.New("logging.access_log_path is required when logging.access_log_rotate.enabled=true")
+	}
 	if path == "" {
 		// default: stdout (same as current behavior)
 		return log.New(os.Stdout, "", log.LstdFlags), nil, true, nil
+	}
+	if cfg.Logging.AccessLogRotate.Enabled {
+		w, err := logx.NewAccessRotateWriter(logx.AccessLogRotateOptions{
+			Path:       path,
+			MaxSizeMB:  cfg.Logging.AccessLogRotate.MaxSizeMB,
+			MaxBackups: cfg.Logging.AccessLogRotate.MaxBackups,
+			MaxAgeDays: cfg.Logging.AccessLogRotate.MaxAgeDays,
+			Compress:   cfg.Logging.AccessLogRotate.Compress,
+		})
+		if err != nil {
+			return nil, nil, false, err
+		}
+		return log.New(w, "", log.LstdFlags), w, false, nil
 	}
 
 	dir := filepath.Dir(path)
