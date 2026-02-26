@@ -33,6 +33,7 @@ func newRootCmd() *cobra.Command {
 		newBalanceCmd(),
 		newModelsCmd(),
 		newPricingCmd(),
+		newUpdateCmd(),
 		newVersionCmd(),
 		newWebCmd(),
 		newTUICmd(),

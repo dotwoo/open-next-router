@@ -113,7 +113,35 @@ onr-admin oauth refresh-token \
   --auth-param "prompt=consent"
 ```
 
-## 8. tui
+## 8. update
+
+Update runtime binaries or provider configs from GitHub Release assets.
+
+```bash
+# Update only onr binary
+onr-admin update onr
+
+# Update only onr-admin binary
+onr-admin update onr-admin
+
+# Update providers dir from open-next-router_config_vX.Y.Z.tar.gz
+onr-admin update providers --config ./onr.yaml
+
+# Update all (order: onr -> providers -> onr-admin)
+onr-admin update all
+
+# Pin a specific runtime version
+onr-admin update all --version v1.2.3
+```
+
+Notes:
+
+- `--all` flag is not supported. Use `onr-admin update all`.
+- Shared flags: `--version`, `--repo`, `--config`, `--providers-dir`, `--onr-bin`, `--onr-admin-bin`, `--backup`.
+- Providers update validates the full providers directory after writing.
+- ONR runtime is not auto-restarted; run reload manually if needed.
+
+## 9. tui
 
 Open the interactive TUI (dump log viewer).
 
@@ -126,7 +154,7 @@ Notes:
 - The TUI reads traffic dump logs from `traffic_dump.dir` (default `./dumps`).
 - Key hints: use `↑/↓` to navigate, `enter` to open, `/` to filter by provider/model/path/status/rid, `r` to reload, `q` to quit.
 
-## 9. web
+## 10. web
 
 Start local web editor for provider DSL configs.
 
