@@ -173,8 +173,16 @@ Optional env for default cURL API base URL shown in page:
 export ONR_ADMIN_WEB_CURL_API_BASE_URL="http://127.0.0.1:3300"
 ```
 
+Optional env for web listen address (used when `--listen` is not provided):
+
+```bash
+export ONR_ADMIN_WEB_LISTEN="127.0.0.1:3310"
+```
+
 Behavior:
 
 - Submit `provider + content` to validate against the whole providers directory.
 - Save happens only after validation succeeds.
 - Target file is `providers.dir/<provider>.conf`.
+- Test Response supports extracting `request_id` from response headers (`X-Onr-Request-Id` first, then `X-Request-Id`) and loading the matching dump file inline.
+- Dump lookup reads files from `traffic_dump.dir` in config (fallback `./dumps`), so ONR must enable `traffic_dump.enabled=true` and the directory must be accessible.

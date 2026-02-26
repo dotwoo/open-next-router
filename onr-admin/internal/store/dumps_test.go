@@ -92,3 +92,108 @@ func TestListDumpSummaries_SortNewestFirst(t *testing.T) {
 		t.Fatalf("expected newest first, got %s", filepath.Base(list[0].Path))
 	}
 }
+
+func TestFindDumpByRequestID_DirectFileHit(t *testing.T) {
+	tmp := t.TempDir()
+	rid := "rid-direct-1"
+	p := filepath.Join(tmp, rid+".log")
+	content := "=== META ===\nrequest_id=" + rid + "\n\n"
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, found, err := FindDumpByRequestID(DumpFindOptions{
+		Dir:       tmp,
+		RequestID: rid,
+	})
+	if err != nil {
+		t.Fatalf("FindDumpByRequestID error: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected found=true")
+	}
+	if sum.Path != p {
+		t.Fatalf("path mismatch: %q", sum.Path)
+	}
+	if sum.RequestID != rid {
+		t.Fatalf("request_id mismatch: %q", sum.RequestID)
+	}
+}
+
+func TestFindDumpByRequestID_FallbackMetaMatch(t *testing.T) {
+	tmp := t.TempDir()
+	rid := "rid-meta-1"
+	p := filepath.Join(tmp, "custom-name.log")
+	content := "=== META ===\nrequest_id=" + rid + "\n\n"
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, found, err := FindDumpByRequestID(DumpFindOptions{
+		Dir:       tmp,
+		RequestID: rid,
+	})
+	if err != nil {
+		t.Fatalf("FindDumpByRequestID error: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected found=true")
+	}
+	if sum.Path != p {
+		t.Fatalf("path mismatch: %q", sum.Path)
+	}
+	if sum.RequestID != rid {
+		t.Fatalf("request_id mismatch: %q", sum.RequestID)
+	}
+}
+
+func TestFindDumpByRequestID_NotFound(t *testing.T) {
+	tmp := t.TempDir()
+	_, found, err := FindDumpByRequestID(DumpFindOptions{
+		Dir:       tmp,
+		RequestID: "rid-not-found",
+	})
+	if err != nil {
+		t.Fatalf("FindDumpByRequestID error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected found=false")
+	}
+}
+
+func TestFindDumpByRequestID_ReturnsNewest(t *testing.T) {
+	tmp := t.TempDir()
+	rid := "rid-newest-1"
+	oldPath := filepath.Join(tmp, "old.log")
+	newPath := filepath.Join(tmp, "new.log")
+	content := "=== META ===\nrequest_id=" + rid + "\n\n"
+	if err := os.WriteFile(oldPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	oldTime := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	newTime := time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(newPath, newTime, newTime); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, found, err := FindDumpByRequestID(DumpFindOptions{
+		Dir:       tmp,
+		RequestID: rid,
+	})
+	if err != nil {
+		t.Fatalf("FindDumpByRequestID error: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected found=true")
+	}
+	if sum.Path != newPath {
+		t.Fatalf("expected newest=%q got=%q", newPath, sum.Path)
+	}
+}

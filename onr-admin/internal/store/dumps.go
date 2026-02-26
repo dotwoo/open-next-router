@@ -41,6 +41,11 @@ type DumpListOptions struct {
 	Limit int
 }
 
+type DumpFindOptions struct {
+	Dir       string
+	RequestID string
+}
+
 func ListDumpSummaries(opts DumpListOptions) ([]DumpSummary, error) {
 	dir := strings.TrimSpace(opts.Dir)
 	if dir == "" {
@@ -110,6 +115,109 @@ func ListDumpSummaries(opts DumpListOptions) ([]DumpSummary, error) {
 		out = append(out, sum)
 	}
 	return out, nil
+}
+
+func FindDumpByRequestID(opts DumpFindOptions) (DumpSummary, bool, error) {
+	dir := strings.TrimSpace(opts.Dir)
+	if dir == "" {
+		return DumpSummary{}, false, errors.New("dump dir is empty")
+	}
+	rid := strings.TrimSpace(opts.RequestID)
+	if rid == "" {
+		return DumpSummary{}, false, errors.New("request_id is empty")
+	}
+
+	if isSafeDumpRequestIDPathPart(rid) {
+		candidate := filepath.Join(dir, rid+".log")
+		sum, found, err := parseDumpSummaryIfExists(candidate)
+		if err != nil {
+			return DumpSummary{}, false, err
+		}
+		if found {
+			if strings.TrimSpace(sum.RequestID) == "" {
+				sum.RequestID = rid
+			}
+			return sum, true, nil
+		}
+	}
+
+	var matched DumpSummary
+	found := false
+	if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".log") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		sum, err := ParseDumpSummary(path, info)
+		if err != nil {
+			return nil
+		}
+		if strings.TrimSpace(sum.RequestID) != rid {
+			return nil
+		}
+		if !found || isDumpSummaryNewer(sum, matched) {
+			matched = sum
+			found = true
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DumpSummary{}, false, nil
+		}
+		return DumpSummary{}, false, err
+	}
+	return matched, found, nil
+}
+
+func parseDumpSummaryIfExists(path string) (DumpSummary, bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DumpSummary{}, false, nil
+		}
+		return DumpSummary{}, false, err
+	}
+	if info.IsDir() {
+		return DumpSummary{}, false, nil
+	}
+	sum, err := ParseDumpSummary(path, info)
+	if err != nil {
+		// Best-effort fallback for malformed files.
+		return DumpSummary{
+			Path:     path,
+			FileName: info.Name(),
+			ModTime:  info.ModTime(),
+			Size:     info.Size(),
+		}, true, nil
+	}
+	return sum, true, nil
+}
+
+func isSafeDumpRequestIDPathPart(v string) bool {
+	s := strings.TrimSpace(v)
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	if strings.Contains(s, "/") || strings.Contains(s, "\\") {
+		return false
+	}
+	return true
+}
+
+func isDumpSummaryNewer(a, b DumpSummary) bool {
+	if !a.ModTime.Equal(b.ModTime) {
+		return a.ModTime.After(b.ModTime)
+	}
+	return a.Path > b.Path
 }
 
 func ParseDumpSummary(path string, info fs.FileInfo) (DumpSummary, error) {

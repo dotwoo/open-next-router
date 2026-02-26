@@ -24,9 +24,12 @@ import (
 
 const (
 	defaultProvidersDir = "./config/providers"
+	defaultDumpsDir     = "./dumps"
 	defaultListen       = "127.0.0.1:3310"
 	defaultAPIBaseURL   = "http://127.0.0.1:3300"
 	envAPIBaseURL       = "ONR_ADMIN_WEB_CURL_API_BASE_URL"
+	envListen           = "ONR_ADMIN_WEB_LISTEN"
+	dumpBodyLimitBytes  = 2 * 1024 * 1024
 )
 
 var providerNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
@@ -39,6 +42,7 @@ type Options struct {
 
 type Server struct {
 	providersDir string
+	dumpsDir     string
 	indexHTML    string
 	mu           sync.Mutex
 }
@@ -74,37 +78,51 @@ type testResponse struct {
 	Error   string            `json:"error,omitempty"`
 }
 
+type dumpByRequestIDResponse struct {
+	OK        bool   `json:"ok"`
+	RequestID string `json:"request_id,omitempty"`
+	Path      string `json:"path,omitempty"`
+	FileName  string `json:"file_name,omitempty"`
+	Content   string `json:"content,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 func Run(opts Options) error {
 	providersDir := resolveProvidersDir(opts.ConfigPath, opts.ProvidersDir)
+	dumpsDir := resolveDumpsDir(opts.ConfigPath)
 	defaultBaseURL := resolveDefaultAPIBaseURL()
-	srv, err := newServer(providersDir, defaultBaseURL)
+	srv, err := newServer(providersDir, dumpsDir, defaultBaseURL)
 	if err != nil {
 		return err
 	}
-	listen := strings.TrimSpace(opts.Listen)
-	if listen == "" {
-		listen = defaultListen
-	}
+	listen := resolveListenAddress(opts.Listen)
 	log.Printf(
-		"onr-admin web listening: url=%q providers_dir=%q default_curl_api_base_url=%q",
+		"onr-admin web listening: url=%q providers_dir=%q dumps_dir=%q default_curl_api_base_url=%q",
 		"http://"+listen,
 		providersDir,
+		dumpsDir,
 		defaultBaseURL,
 	)
 	return http.ListenAndServe(listen, srv.Handler())
 }
 
 func NewServer(providersDir string) (*Server, error) {
-	return newServer(providersDir, defaultAPIBaseURL)
+	return newServer(providersDir, defaultDumpsDir, defaultAPIBaseURL)
 }
 
-func newServer(providersDir string, defaultBaseURL string) (*Server, error) {
-	dir := strings.TrimSpace(providersDir)
-	if dir == "" {
+func newServer(providersDir string, dumpsDir string, defaultBaseURL string) (*Server, error) {
+	providerDir := strings.TrimSpace(providersDir)
+	if providerDir == "" {
 		return nil, errors.New("providers dir is empty")
 	}
+	dumpDir := strings.TrimSpace(dumpsDir)
+	if dumpDir == "" {
+		dumpDir = defaultDumpsDir
+	}
 	return &Server{
-		providersDir: dir,
+		providersDir: providerDir,
+		dumpsDir:     dumpDir,
 		indexHTML:    renderIndexHTML(defaultBaseURL),
 	}, nil
 }
@@ -117,6 +135,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/providers/validate", s.handleValidate)
 	mux.HandleFunc("/api/providers/save", s.handleSave)
 	mux.HandleFunc("/api/test/request", s.handleTestRequest)
+	mux.HandleFunc("/api/dumps/by-request-id", s.handleDumpByRequestID)
 	return mux
 }
 
@@ -289,6 +308,92 @@ func (s *Server) handleTestRequest(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleDumpByRequestID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	rid := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	if rid == "" {
+		writeJSONAny(w, http.StatusBadRequest, dumpByRequestIDResponse{OK: false, Error: "request_id is empty"})
+		return
+	}
+	sum, found, err := store.FindDumpByRequestID(store.DumpFindOptions{
+		Dir:       s.dumpsDir,
+		RequestID: rid,
+	})
+	if err != nil {
+		writeJSONAny(w, http.StatusInternalServerError, dumpByRequestIDResponse{
+			OK:        false,
+			RequestID: rid,
+			Error:     err.Error(),
+		})
+		return
+	}
+	if !found {
+		writeJSONAny(w, http.StatusNotFound, dumpByRequestIDResponse{
+			OK:        false,
+			RequestID: rid,
+			Error:     "dump file not found",
+		})
+		return
+	}
+
+	path := strings.TrimSpace(sum.Path)
+	if path == "" {
+		writeJSONAny(w, http.StatusInternalServerError, dumpByRequestIDResponse{
+			OK:        false,
+			RequestID: rid,
+			Error:     "dump file path is empty",
+		})
+		return
+	}
+	// #nosec G304 -- path is selected from scanned dump directory.
+	f, err := os.Open(path)
+	if err != nil {
+		writeJSONAny(w, http.StatusInternalServerError, dumpByRequestIDResponse{
+			OK:        false,
+			RequestID: rid,
+			Path:      path,
+			Error:     err.Error(),
+		})
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	bodyBytes, truncated, err := readBodyLimit(f, dumpBodyLimitBytes)
+	if err != nil {
+		writeJSONAny(w, http.StatusInternalServerError, dumpByRequestIDResponse{
+			OK:        false,
+			RequestID: rid,
+			Path:      path,
+			Error:     err.Error(),
+		})
+		return
+	}
+
+	content := string(bodyBytes)
+	if truncated {
+		content += "\n...[truncated]"
+	}
+	fileName := strings.TrimSpace(sum.FileName)
+	if fileName == "" {
+		fileName = filepath.Base(path)
+	}
+	requestID := strings.TrimSpace(sum.RequestID)
+	if requestID == "" {
+		requestID = rid
+	}
+	writeJSONAny(w, http.StatusOK, dumpByRequestIDResponse{
+		OK:        true,
+		RequestID: requestID,
+		Path:      path,
+		FileName:  fileName,
+		Content:   content,
+		Truncated: truncated,
+	})
+}
+
 func (s *Server) validateCandidate(provider string, content string) (dslconfig.LoadResult, string, error) {
 	name, err := normalizeProviderName(provider)
 	if err != nil {
@@ -434,6 +539,14 @@ func resolveProvidersDir(cfgPath, override string) string {
 	return defaultProvidersDir
 }
 
+func resolveDumpsDir(cfgPath string) string {
+	cfg, _ := store.LoadConfigIfExists(strings.TrimSpace(cfgPath))
+	if cfg != nil && strings.TrimSpace(cfg.TrafficDump.Dir) != "" {
+		return strings.TrimSpace(cfg.TrafficDump.Dir)
+	}
+	return defaultDumpsDir
+}
+
 func listProviders(providersDir string) ([]string, error) {
 	entries, err := os.ReadDir(providersDir)
 	if err != nil {
@@ -530,6 +643,16 @@ func resolveDefaultAPIBaseURL() string {
 		return strings.TrimRight(v, "/")
 	}
 	return defaultAPIBaseURL
+}
+
+func resolveListenAddress(override string) string {
+	if v := strings.TrimSpace(override); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv(envListen)); v != "" {
+		return v
+	}
+	return defaultListen
 }
 
 func renderIndexHTML(defaultBaseURL string) string {

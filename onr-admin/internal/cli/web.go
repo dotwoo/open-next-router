@@ -16,7 +16,6 @@ type webOptions struct {
 func newWebCmd() *cobra.Command {
 	opts := webOptions{
 		cfgPath: "onr.yaml",
-		listen:  "127.0.0.1:3310",
 	}
 	cmd := &cobra.Command{
 		Use:   "web",
@@ -28,7 +27,7 @@ func newWebCmd() *cobra.Command {
 	fs := cmd.Flags()
 	fs.StringVarP(&opts.cfgPath, "config", "c", "onr.yaml", "config yaml path")
 	fs.StringVar(&opts.providersDir, "providers-dir", "", "providers dir path")
-	fs.StringVar(&opts.listen, "listen", "127.0.0.1:3310", "http listen address")
+	fs.StringVar(&opts.listen, "listen", "", "http listen address (overrides ONR_ADMIN_WEB_LISTEN)")
 	return cmd
 }
 
