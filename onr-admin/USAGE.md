@@ -32,6 +32,9 @@ Encryption and master key helpers.
 # Encrypt plaintext into ENC[...]
 onr-admin crypto encrypt --text 'sk-xxxx'
 
+# Decrypt ENC[...] into plaintext
+onr-admin crypto decrypt --text 'ENC[v1:aesgcm:...]'
+
 # Encrypt plaintext values in keys.yaml in-place
 onr-admin crypto encrypt-keys --config ./onr.yaml
 

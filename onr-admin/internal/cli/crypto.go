@@ -22,6 +22,7 @@ func newCryptoCmd() *cobra.Command {
 	}
 	cmd.AddCommand(
 		newCryptoEncryptCmd(),
+		newCryptoDecryptCmd(),
 		newCryptoEncryptKeysCmd(),
 		newCryptoGenMasterKeyCmd(),
 	)
@@ -34,7 +35,7 @@ func newCryptoEncryptCmd() *cobra.Command {
 		Use:   "encrypt",
 		Short: "Encrypt plaintext to ENC[v1:aesgcm:...]",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			plain, err := resolveEncryptPlaintext(strings.TrimSpace(text), cmd.InOrStdin(), isTerminalReader(cmd.InOrStdin()))
+			plain, err := resolveCryptoInput(strings.TrimSpace(text), cmd.InOrStdin(), isTerminalReader(cmd.InOrStdin()))
 			if err != nil {
 				return err
 			}
@@ -53,10 +54,35 @@ func newCryptoEncryptCmd() *cobra.Command {
 	return cmd
 }
 
-func resolveEncryptPlaintext(text string, in io.Reader, inTerminal bool) (string, error) {
-	plain := strings.TrimSpace(text)
-	if plain != "" {
-		return plain, nil
+func newCryptoDecryptCmd() *cobra.Command {
+	var text string
+	cmd := &cobra.Command{
+		Use:   "decrypt",
+		Short: "Decrypt ENC[v1:aesgcm:...] to plaintext",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ciphertext, err := resolveCryptoInput(strings.TrimSpace(text), cmd.InOrStdin(), isTerminalReader(cmd.InOrStdin()))
+			if err != nil {
+				return err
+			}
+			if ciphertext == "" {
+				return errors.New("missing input: provide --text, enter a line, or pipe stdin")
+			}
+			out, err := keystore.Decrypt(ciphertext)
+			if err != nil {
+				return fmt.Errorf("decrypt: %w", err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), out)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&text, "text", "", "ENC value to decrypt (if empty, read from stdin)")
+	return cmd
+}
+
+func resolveCryptoInput(text string, in io.Reader, inTerminal bool) (string, error) {
+	value := strings.TrimSpace(text)
+	if value != "" {
+		return value, nil
 	}
 
 	if inTerminal {

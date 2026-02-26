@@ -219,6 +219,15 @@ func decryptIfNeeded(raw string) (string, error) {
 	if m == nil {
 		return raw, nil
 	}
+	return Decrypt(raw)
+}
+
+// Decrypt decrypts an ENC[v1:aesgcm:...] value into plaintext.
+func Decrypt(raw string) (string, error) {
+	m := encValuePattern.FindStringSubmatch(strings.TrimSpace(raw))
+	if m == nil {
+		return "", errors.New("ciphertext must be in ENC[v1:aesgcm:...] format")
+	}
 	key, err := loadMasterKey()
 	if err != nil {
 		return "", err

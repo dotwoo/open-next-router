@@ -127,9 +127,9 @@ func TestEncryptDecrypt(t *testing.T) {
 	if !strings.HasPrefix(enc, "ENC[v1:aesgcm:") {
 		t.Fatalf("unexpected encrypted format: %q", enc)
 	}
-	got, err := decryptIfNeeded(enc)
+	got, err := Decrypt(enc)
 	if err != nil {
-		t.Fatalf("decryptIfNeeded err=%v", err)
+		t.Fatalf("Decrypt err=%v", err)
 	}
 	if got != "hello" {
 		t.Fatalf("unexpected plaintext: %q", got)
@@ -143,6 +143,9 @@ func TestEncryptDecrypt(t *testing.T) {
 
 func TestDecryptIfNeeded_Errors(t *testing.T) {
 	t.Setenv("ONR_MASTER_KEY", "12345678901234567890123456789012")
+	if _, err := Decrypt("plain"); err == nil {
+		t.Fatalf("expected ENC format error")
+	}
 	if _, err := decryptIfNeeded("ENC[v1:aesgcm:AA=A]"); err == nil {
 		t.Fatalf("expected invalid base64 error")
 	}
