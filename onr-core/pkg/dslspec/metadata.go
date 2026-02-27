@@ -1,4 +1,4 @@
-package dslconfig
+package dslspec
 
 import (
 	"sort"

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/jsonutil"
 )
 
 type Token struct {
@@ -234,15 +236,15 @@ func (c *Client) requestToken(ctx context.Context, in AcquireInput) (Token, erro
 	expiresPath := firstNonEmpty(strings.TrimSpace(in.ExpiresInPath), "$.expires_in")
 	typePath := firstNonEmpty(strings.TrimSpace(in.TokenTypePath), "$.token_type")
 
-	access := strings.TrimSpace(getStringByPath(root, tokenPath))
+	access := strings.TrimSpace(jsonutil.GetStringByPath(root, tokenPath))
 	if access == "" {
 		return Token{}, fmt.Errorf("oauth token not found at %s", tokenPath)
 	}
-	tokenType := strings.TrimSpace(getStringByPath(root, typePath))
+	tokenType := strings.TrimSpace(jsonutil.GetStringByPath(root, typePath))
 	if tokenType == "" {
 		tokenType = "Bearer"
 	}
-	expiresIn := int(getFloatByPath(root, expiresPath))
+	expiresIn := int(jsonutil.GetFloatByPath(root, expiresPath))
 	if expiresIn <= 0 {
 		expiresIn = int(in.FallbackTTL.Seconds())
 	}

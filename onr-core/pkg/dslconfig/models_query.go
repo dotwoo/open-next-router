@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/jsonutil"
 )
 
 const (
@@ -136,23 +137,15 @@ func ExtractModelIDs(cfg ModelsQueryConfig, respBody []byte) ([]string, error) {
 }
 
 func extractStringsByPath(root any, path string) []string {
-	p := strings.TrimSpace(path)
-	if p == "" || !strings.HasPrefix(p, "$.") {
-		return nil
-	}
-	parts := strings.Split(strings.TrimPrefix(p, "$."), ".")
-	vals, ok := collectPathValues(root, parts)
+	vals, ok := jsonutil.GetValuesByPath(root, path)
 	if !ok || len(vals) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(vals))
 	for _, v := range vals {
-		switch t := v.(type) {
-		case string:
-			s := strings.TrimSpace(t)
-			if s != "" {
-				out = append(out, s)
-			}
+		s := strings.TrimSpace(jsonutil.CoerceString(v))
+		if s != "" {
+			out = append(out, s)
 		}
 	}
 	return out

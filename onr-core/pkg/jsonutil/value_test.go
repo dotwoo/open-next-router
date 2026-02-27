@@ -31,3 +31,38 @@ func TestCoerceInt_StringAndArray(t *testing.T) {
 		t.Fatalf("array sum got %d, want 6", got)
 	}
 }
+
+func TestGetStringByPath_SupportsWildcardAndIndex(t *testing.T) {
+	root := map[string]any{
+		"items": []any{
+			map[string]any{"v": ""},
+			map[string]any{"v": "x"},
+		},
+		"one": []any{
+			map[string]any{"name": "first"},
+		},
+	}
+
+	if got := GetStringByPath(root, "$.items[*].v"); got != "x" {
+		t.Fatalf("wildcard string got %q, want x", got)
+	}
+	if got := GetStringByPath(root, "$.one[0].name"); got != "first" {
+		t.Fatalf("index string got %q, want first", got)
+	}
+}
+
+func TestGetFloatByPath_StringAndNumber(t *testing.T) {
+	root := map[string]any{
+		"usage": map[string]any{
+			"a": 1.5,
+			"b": "2.5",
+		},
+	}
+
+	if got := GetFloatByPath(root, "$.usage.a"); got != 1.5 {
+		t.Fatalf("float value got %v, want 1.5", got)
+	}
+	if got := GetFloatByPath(root, "$.usage.b"); got != 2.5 {
+		t.Fatalf("string float got %v, want 2.5", got)
+	}
+}

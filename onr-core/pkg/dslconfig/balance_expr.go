@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/jsonutil"
 )
 
 // BalanceExpr is a restricted arithmetic expression used by balance custom mode.
@@ -38,7 +40,7 @@ func (e *BalanceExpr) Eval(root map[string]any) float64 {
 	case balanceExprNumber:
 		return e.value
 	case balanceExprPath:
-		return getFloatByPath(root, e.path)
+		return jsonutil.GetFloatByPath(root, e.path)
 	case balanceExprAdd:
 		return e.left.Eval(root) + e.right.Eval(root)
 	case balanceExprSub:

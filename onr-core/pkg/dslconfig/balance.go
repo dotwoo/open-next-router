@@ -3,10 +3,10 @@ package dslconfig
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/r9s-ai/open-next-router/onr-core/pkg/dslmeta"
+	"github.com/r9s-ai/open-next-router/onr-core/pkg/jsonutil"
 )
 
 const (
@@ -161,55 +161,5 @@ func evalBalanceField(root map[string]any, expr, path string) (float64, error) {
 	if p == "" {
 		return 0, nil
 	}
-	return getFloatByPath(root, p), nil
-}
-
-func getFloatByPath(root map[string]any, path string) float64 {
-	p := strings.TrimSpace(path)
-	if p == "" || !strings.HasPrefix(p, "$.") {
-		return 0
-	}
-	parts := strings.Split(strings.TrimPrefix(p, "$."), ".")
-	vals, ok := collectPathValues(root, parts)
-	if !ok {
-		return 0
-	}
-	sum := 0.0
-	for _, v := range vals {
-		sum += coerceFloat(v)
-	}
-	return sum
-}
-
-func coerceFloat(v any) float64 {
-	switch t := v.(type) {
-	case float64:
-		return t
-	case float32:
-		return float64(t)
-	case int:
-		return float64(t)
-	case int64:
-		return float64(t)
-	case int32:
-		return float64(t)
-	case json.Number:
-		f, err := t.Float64()
-		if err == nil {
-			return f
-		}
-		i, err := t.Int64()
-		if err == nil {
-			return float64(i)
-		}
-		return 0
-	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
-		if err != nil {
-			return 0
-		}
-		return f
-	default:
-		return 0
-	}
+	return jsonutil.GetFloatByPath(root, p), nil
 }

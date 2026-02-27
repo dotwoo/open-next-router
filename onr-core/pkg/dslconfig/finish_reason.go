@@ -85,12 +85,12 @@ func ExtractFinishReason(meta *dslmeta.Meta, cfg FinishReasonExtractConfig, resp
 		if strings.TrimSpace(path) == "" {
 			return "", nil
 		}
-		return getStringByPath(root, path), nil
+		return jsonutil.GetStringByPath(root, path), nil
 	}
 
 	// Path override works for any non-custom mode as an escape hatch.
 	if strings.TrimSpace(path) != "" {
-		if v := getStringByPath(root, path); strings.TrimSpace(v) != "" {
+		if v := jsonutil.GetStringByPath(root, path); strings.TrimSpace(v) != "" {
 			return strings.TrimSpace(v), nil
 		}
 	}
@@ -105,8 +105,8 @@ func ExtractFinishReason(meta *dslmeta.Meta, cfg FinishReasonExtractConfig, resp
 		// - message_delta: {"delta":{"stop_reason":"end_turn",...}, "usage":{...}}
 		return strings.TrimSpace(firstNonEmptyString(
 			jsonutil.CoerceString(root["stop_reason"]),
-			getStringByPath(root, "$.delta.stop_reason"),
-			getStringByPath(root, "$.message.stop_reason"),
+			jsonutil.GetStringByPath(root, "$.delta.stop_reason"),
+			jsonutil.GetStringByPath(root, "$.message.stop_reason"),
 		)), nil
 	case "gemini":
 		return extractGeminiFinishReason(root), nil

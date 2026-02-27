@@ -65,4 +65,26 @@
 //   - Apply JSONOps to the request/response bodies as needed.
 //   - Apply ProviderResponse / ProviderError selection at the boundary where the host
 //     writes the final response to the client.
+//
+// # File organization
+//
+// Filename prefixes map to package responsibilities:
+//
+//   - core_*: DSL engine primitives (scanner, preprocess, registry, shared types/constants).
+//   - parse_*: parser entry points and block parsers.
+//   - validate_*: semantic validation entry points and per-directive validators.
+//   - directive-named files (for example request_transform.go, response.go, usage.go):
+//     runtime selection/extraction behavior for one directive domain.
+//
+// # Testing strategy
+//
+// Tests are organized by behavior and user-visible scenarios, not strict 1:1 file mapping.
+// One test file can intentionally cover multiple implementation files (for example parse +
+// validate + runtime selection) to protect end-to-end DSL behavior under refactors.
+//
+// Recommended practice:
+//
+//   - Prefer scenario tests for externally visible behavior and compatibility.
+//   - Add focused unit tests for exported/public helpers with branchy logic.
+//   - Avoid enforcing one *_test.go per *.go file as a hard rule.
 package dslconfig

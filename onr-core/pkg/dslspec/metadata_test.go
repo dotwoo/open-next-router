@@ -1,4 +1,4 @@
-package dslconfig
+package dslspec
 
 import (
 	"strings"
@@ -94,26 +94,17 @@ func TestDirectiveArgEnumValuesInBlock(t *testing.T) {
 }
 
 func TestMetadata_ModeOptionsConsistency(t *testing.T) {
-	oauthModes := make([]string, 0, len(oauthBuiltinTemplates))
-	for k := range oauthBuiltinTemplates {
-		oauthModes = append(oauthModes, k)
-	}
-	assertSetEqual(t, "oauth_mode", ModesByDirective("oauth_mode"), oauthModes)
-	assertSetEqual(t, "balance_mode", ModesByDirective("balance_mode"), []string{balanceModeOpenAI, balanceModeCustom})
-	assertSetEqual(t, "models_mode", ModesByDirective("models_mode"), []string{modelsModeOpenAI, modelsModeGemini, modelsModeCustom})
-	assertSetEqual(t, "usage_extract", ModesByDirective("usage_extract"), []string{usageModeOpenAI, usageModeAnthropic, usageModeGemini, usageModeCustom})
-	assertSetEqual(t, "finish_reason_extract", ModesByDirective("finish_reason_extract"), []string{usageModeOpenAI, usageModeAnthropic, usageModeGemini, usageModeCustom})
-
-	errorModes := make([]string, 0, len(supportedErrorMapModes))
-	for k := range supportedErrorMapModes {
-		errorModes = append(errorModes, k)
-	}
-	assertSetEqual(t, "error_map", ModesByDirective("error_map"), errorModes)
+	assertSetEqual(t, "oauth_mode", ModesByDirective("oauth_mode"), []string{"openai", "gemini", "qwen", "claude", "iflow", "antigravity", "kimi", "custom"})
+	assertSetEqual(t, "balance_mode", ModesByDirective("balance_mode"), []string{"openai", "custom"})
+	assertSetEqual(t, "models_mode", ModesByDirective("models_mode"), []string{"openai", "gemini", "custom"})
+	assertSetEqual(t, "usage_extract", ModesByDirective("usage_extract"), []string{"openai", "anthropic", "gemini", "custom"})
+	assertSetEqual(t, "finish_reason_extract", ModesByDirective("finish_reason_extract"), []string{"openai", "anthropic", "gemini", "custom"})
+	assertSetEqual(t, "error_map", ModesByDirective("error_map"), []string{"openai", "common", "passthrough"})
 }
 
 func TestMetadata_EnumArgOptionsConsistency(t *testing.T) {
 	assertSetEqual(t, "oauth_method.auth", DirectiveArgEnumValuesInBlock("oauth_method", "auth", 0), []string{"GET", "POST"})
-	assertSetEqual(t, "oauth_content_type.auth", DirectiveArgEnumValuesInBlock("oauth_content_type", "auth", 0), []string{oauthContentTypeForm, oauthContentTypeJSON})
+	assertSetEqual(t, "oauth_content_type.auth", DirectiveArgEnumValuesInBlock("oauth_content_type", "auth", 0), []string{"form", "json"})
 	assertSetEqual(t, "method.balance", DirectiveArgEnumValuesInBlock("method", "balance", 0), []string{"GET", "POST"})
 	assertSetEqual(t, "method.models", DirectiveArgEnumValuesInBlock("method", "models", 0), []string{"GET", "POST"})
 	assertSetEqual(t, "balance_unit.balance", DirectiveArgEnumValuesInBlock("balance_unit", "balance", 0), []string{"USD", "CNY"})
