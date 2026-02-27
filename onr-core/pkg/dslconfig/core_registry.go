@@ -57,6 +57,7 @@ func (r *Registry) GetProvider(name string) (ProviderFile, bool) {
 type LoadResult struct {
 	LoadedProviders []string
 	SkippedFiles    []string
+	Warnings        []ValidationWarning
 }
 
 const providerConfExt = ".conf"

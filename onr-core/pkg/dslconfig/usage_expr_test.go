@@ -63,3 +63,39 @@ provider "demo" {
 		t.Fatalf("expected TotalTokensExpr to be set")
 	}
 }
+
+func TestValidateProviderFile_UsageAssignExprSuffix(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.conf")
+	// #nosec G306 -- test data file.
+	if err := os.WriteFile(path, []byte(`
+syntax "next-router/0.1";
+
+provider "demo" {
+  defaults {
+    upstream_config {
+      base_url = "https://api.example.com";
+    }
+    metrics {
+      usage_extract custom;
+      input_tokens_expr = $.usage.prompt_tokens + $.usage.input_tokens;
+      output_tokens_expr = $.usage.output_tokens;
+      total_tokens_expr = $.usage.total_tokens - $.usage.cached_tokens;
+    }
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	pf, err := ValidateProviderFile(path)
+	if err != nil {
+		t.Fatalf("ValidateProviderFile: %v", err)
+	}
+	if pf.Usage.Defaults.InputTokensExpr == nil {
+		t.Fatalf("expected InputTokensExpr to be set")
+	}
+	if pf.Usage.Defaults.TotalTokensExpr == nil {
+		t.Fatalf("expected TotalTokensExpr to be set")
+	}
+}

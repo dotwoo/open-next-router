@@ -43,6 +43,15 @@ func TestDirectiveHoverForModelsMode(t *testing.T) {
 	}
 }
 
+func TestDirectiveHoverForExprSuffixDirectives(t *testing.T) {
+	for _, name := range []string{"input_tokens_expr", "used_expr"} {
+		hover, ok := DirectiveHover(name)
+		if !ok || hover == "" {
+			t.Fatalf("expected hover for %s", name)
+		}
+	}
+}
+
 func TestDirectiveHoverInBlock_PrefersExactBlock(t *testing.T) {
 	hover, ok := DirectiveHoverInBlock("set_header", "balance")
 	if !ok || hover == "" {

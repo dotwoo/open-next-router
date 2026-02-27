@@ -59,6 +59,7 @@ provider "demo" {
       method GET;
       path "/v1/credits";
       balance_expr = $.data.total_credits - $.data.total_usage;
+      used_expr = $.data.total_usage;
       used_path "$.data.total_usage";
       balance_unit "USD";
       set_header "Authorization" concat("Bearer ", $channel.key);
@@ -78,6 +79,9 @@ provider "demo" {
 	}
 	if pf.Balance.Defaults.Path != "/v1/credits" {
 		t.Fatalf("balance path got %q", pf.Balance.Defaults.Path)
+	}
+	if pf.Balance.Defaults.UsedExpr == "" {
+		t.Fatalf("expected used_expr to be set")
 	}
 	if len(pf.Balance.Defaults.Headers) != 1 {
 		t.Fatalf("balance headers len got %d", len(pf.Balance.Defaults.Headers))

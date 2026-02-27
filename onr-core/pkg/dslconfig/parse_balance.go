@@ -3,6 +3,8 @@ package dslconfig
 import "strings"
 
 const balanceExprKey = "balance_expr"
+const usedExprKey = "used_expr"
+const usedExprLegacyKey = "used"
 
 func parseBalancePhase(s *scanner, cfg *BalanceQueryConfig) error {
 	lb := s.nextNonTrivia()
@@ -50,7 +52,7 @@ func parseBalancePhase(s *scanner, cfg *BalanceQueryConfig) error {
 				case "usage_path":
 					cfg.UsagePath = v
 				}
-			case balanceExprKey, "used":
+			case balanceExprKey, usedExprKey, usedExprLegacyKey:
 				if err := consumeEquals(s); err != nil {
 					return err
 				}

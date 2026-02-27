@@ -120,8 +120,12 @@ func validateModels(path string) error {
 }
 
 func validateProviders(path string) error {
-	if _, err := dslconfig.ValidateProvidersDir(path); err != nil {
+	res, err := dslconfig.ValidateProvidersDir(path)
+	if err != nil {
 		return fmt.Errorf("validate providers dir %s failed: %w", path, err)
+	}
+	for _, w := range res.Warnings {
+		fmt.Printf("warn: %s\n", w.String())
 	}
 	fmt.Println("validate providers: OK")
 	return nil

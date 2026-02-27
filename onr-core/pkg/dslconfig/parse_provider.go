@@ -329,7 +329,8 @@ func parseMetricsPhase(s *scanner, usage *UsageExtractConfig, finish *FinishReas
 				if err := parseUsageExtractStmt(s, usage); err != nil {
 					return err
 				}
-			case "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "total_tokens":
+			case "input_tokens_expr", "output_tokens_expr", "cache_read_tokens_expr", "cache_write_tokens_expr", "total_tokens_expr",
+				"input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "total_tokens":
 				if err := parseUsageExtractAssignStmt(s, usage, tok.text); err != nil {
 					return err
 				}
@@ -462,6 +463,16 @@ func parseUsageExtractAssignStmt(s *scanner, cfg *UsageExtractConfig, key string
 		return fmt.Errorf("invalid %s expr %q: %w", key, exprStr, err)
 	}
 	switch key {
+	case "input_tokens_expr":
+		cfg.InputTokensExpr = expr
+	case "output_tokens_expr":
+		cfg.OutputTokensExpr = expr
+	case "cache_read_tokens_expr":
+		cfg.CacheReadTokensExpr = expr
+	case "cache_write_tokens_expr":
+		cfg.CacheWriteTokensExpr = expr
+	case "total_tokens_expr":
+		cfg.TotalTokensExpr = expr
 	case "input_tokens":
 		cfg.InputTokensExpr = expr
 	case "output_tokens":

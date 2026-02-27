@@ -58,6 +58,7 @@ type providerResponse struct {
 	TargetFile      string   `json:"target_file,omitempty"`
 	Content         string   `json:"content,omitempty"`
 	LoadedProviders []string `json:"loaded_providers,omitempty"`
+	Warnings        []string `json:"warnings,omitempty"`
 	Providers       []string `json:"providers,omitempty"`
 	Error           string   `json:"error,omitempty"`
 }
@@ -217,6 +218,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 		Provider:        in.Provider,
 		TargetFile:      target,
 		LoadedProviders: res.LoadedProviders,
+		Warnings:        formatWarnings(res.Warnings),
 	})
 }
 
@@ -251,6 +253,7 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 		Provider:        in.Provider,
 		TargetFile:      target,
 		LoadedProviders: res.LoadedProviders,
+		Warnings:        formatWarnings(res.Warnings),
 	})
 }
 
@@ -453,6 +456,17 @@ func decodeProviderRequest(r *http.Request) (providerRequest, error) {
 		return providerRequest{}, errors.New("content is empty")
 	}
 	return in, nil
+}
+
+func formatWarnings(warnings []dslconfig.ValidationWarning) []string {
+	if len(warnings) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		out = append(out, w.String())
+	}
+	return out
 }
 
 func decodeTestRequest(r *http.Request) (testRequest, error) {

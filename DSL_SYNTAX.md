@@ -944,10 +944,10 @@ Multiple: yes
 - Optional override / required for `finish_reason_extract custom;`.
 - JSONPath subset: `$.a.b.c` / `$.items[0].x` / `$.items[*].x` (returns first non-empty string with `[*]`).
 
-#### input_tokens
+#### input_tokens_expr
 
 ```text
-Syntax:  input_tokens = <expr>;
+Syntax:  input_tokens_expr = <expr>;
 Default: —
 Context: metrics
 Multiple: yes
@@ -957,51 +957,56 @@ Multiple: yes
 - `<expr>` is a restricted expression: `+/-`, JSONPath, integer constants; no parentheses, no `*/`, no functions.
 - JSONPath subset: `$.a.b.c` / `$.items[0].x` / `$.items[*].x` (sum with `[*]`).
 - Missing/non-numeric values are treated as `0`.
+- Legacy alias: `input_tokens = <expr>;`.
 
-#### output_tokens
+#### output_tokens_expr
 
 ```text
-Syntax:  output_tokens = <expr>;
+Syntax:  output_tokens_expr = <expr>;
 Default: —
 Context: metrics
 Multiple: yes
 ```
 
-- Same rules as `input_tokens`.
+- Same rules as `input_tokens_expr`.
+- Legacy alias: `output_tokens = <expr>;`.
 
-#### cache_read_tokens
+#### cache_read_tokens_expr
 
 ```text
-Syntax:  cache_read_tokens = <expr>;
+Syntax:  cache_read_tokens_expr = <expr>;
 Default: —
 Context: metrics
 Multiple: yes
 ```
 
-- Same rules as `input_tokens`.
+- Same rules as `input_tokens_expr`.
+- Legacy alias: `cache_read_tokens = <expr>;`.
 
-#### cache_write_tokens
+#### cache_write_tokens_expr
 
 ```text
-Syntax:  cache_write_tokens = <expr>;
+Syntax:  cache_write_tokens_expr = <expr>;
 Default: —
 Context: metrics
 Multiple: yes
 ```
 
-- Same rules as `input_tokens`.
+- Same rules as `input_tokens_expr`.
+- Legacy alias: `cache_write_tokens = <expr>;`.
 
-#### total_tokens
+#### total_tokens_expr
 
 ```text
-Syntax:  total_tokens = <expr>;
-Default: input_tokens + output_tokens
+Syntax:  total_tokens_expr = <expr>;
+Default: input_tokens_expr + output_tokens_expr
 Context: metrics
 Multiple: yes
 ```
 
-- Same rules as `input_tokens`.
-- If not explicitly set, defaults to `input_tokens + output_tokens`.
+- Same rules as `input_tokens_expr`.
+- If not explicitly set, defaults to `input_tokens_expr + output_tokens_expr`.
+- Legacy alias: `total_tokens = <expr>;`.
 
 #### input_tokens_path
 
@@ -1012,7 +1017,7 @@ Context: metrics
 Multiple: yes
 ```
 
-- Shorthand for `input_tokens = <jsonpath>;` (single JSONPath only; no arithmetic).
+- Shorthand for `input_tokens_expr = <jsonpath>;` (single JSONPath only; no arithmetic).
 
 #### output_tokens_path
 
@@ -1023,7 +1028,7 @@ Context: metrics
 Multiple: yes
 ```
 
-- Shorthand for `output_tokens = <jsonpath>;` (single JSONPath only; no arithmetic).
+- Shorthand for `output_tokens_expr = <jsonpath>;` (single JSONPath only; no arithmetic).
 
 #### cache_read_tokens_path
 
@@ -1034,7 +1039,7 @@ Context: metrics
 Multiple: yes
 ```
 
-- Shorthand for `cache_read_tokens = <jsonpath>;` (single JSONPath only; no arithmetic).
+- Shorthand for `cache_read_tokens_expr = <jsonpath>;` (single JSONPath only; no arithmetic).
 
 #### cache_write_tokens_path
 
@@ -1045,7 +1050,7 @@ Context: metrics
 Multiple: yes
 ```
 
-- Shorthand for `cache_write_tokens = <jsonpath>;` (single JSONPath only; no arithmetic).
+- Shorthand for `cache_write_tokens_expr = <jsonpath>;` (single JSONPath only; no arithmetic).
 
 ### 7.10 balance (upstream balance query)
 
@@ -1081,17 +1086,18 @@ Multiple: yes
 - Required in `balance_mode custom`.
 - Supports absolute URL or path relative to provider `base_url`.
 
-#### balance_expr / used
+#### balance_expr / used_expr
 
 ```text
 Syntax:  balance_expr = <expr>;
-Syntax:  used = <expr>;
+Syntax:  used_expr = <expr>;
 Default: —
 Context: balance
 Multiple: yes
 ```
 
 - Restricted expression: JSONPath / number with `+` `-` only.
+- Legacy alias: `used = <expr>;`.
 
 #### balance_path / used_path
 

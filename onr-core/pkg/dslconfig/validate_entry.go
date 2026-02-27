@@ -121,6 +121,7 @@ func ValidateProvidersDir(providersDir string) (LoadResult, error) {
 	}
 
 	loaded := make([]string, 0)
+	warnings := make([]ValidationWarning, 0)
 	seen := map[string]string{} // provider -> file
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -139,8 +140,21 @@ func ValidateProvidersDir(providersDir string) (LoadResult, error) {
 		}
 		seen[pf.Name] = path
 		loaded = append(loaded, pf.Name)
+		warnings = append(warnings, collectDeprecatedDirectiveWarnings(path, pf.Content)...)
 	}
 
 	sort.Strings(loaded)
-	return LoadResult{LoadedProviders: loaded}, nil
+	sort.Slice(warnings, func(i, j int) bool {
+		if warnings[i].File != warnings[j].File {
+			return warnings[i].File < warnings[j].File
+		}
+		if warnings[i].Line != warnings[j].Line {
+			return warnings[i].Line < warnings[j].Line
+		}
+		if warnings[i].Column != warnings[j].Column {
+			return warnings[i].Column < warnings[j].Column
+		}
+		return warnings[i].Directive < warnings[j].Directive
+	})
+	return LoadResult{LoadedProviders: loaded, Warnings: warnings}, nil
 }

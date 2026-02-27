@@ -43,6 +43,27 @@ provider "openai" {
 }
 `
 
+const validOpenAIConfWithDeprecated = `
+syntax "next-router/0.1";
+
+provider "openai" {
+  defaults {
+    upstream_config { base_url = "https://api.openai.com"; }
+    auth { auth_bearer; }
+    metrics {
+      usage_extract custom;
+      input_tokens = $.usage.input_tokens;
+      output_tokens = $.usage.output_tokens;
+    }
+  }
+
+  match api = "chat.completions" {
+    upstream { set_path "/v1/chat/completions"; }
+    response { resp_passthrough; }
+  }
+}
+`
+
 func TestSaveProviderRequiresValidationSuccess(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -147,6 +168,17 @@ func TestProviderEndpoints(t *testing.T) {
 	})
 	if status != http.StatusOK {
 		t.Fatalf("validate status=%d body=%v", status, body)
+	}
+
+	status, body = postJSON(t, httpSrv.URL+"/api/providers/validate", providerRequest{
+		Provider: "openai",
+		Content:  validOpenAIConfWithDeprecated,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("validate(deprecated) status=%d body=%v", status, body)
+	}
+	if len(body.Warnings) == 0 {
+		t.Fatalf("expected deprecated warnings in validate response")
 	}
 }
 

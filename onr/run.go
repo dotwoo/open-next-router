@@ -84,6 +84,9 @@ func runConfigTest(cfgPath string) error {
 		return fmt.Errorf("providers: %w", err)
 	}
 	fmt.Fprintf(os.Stdout, "ok: providers loaded=%d\n", len(res.LoadedProviders))
+	for _, w := range res.Warnings {
+		fmt.Fprintf(os.Stdout, "warn: %s\n", w.String())
+	}
 
 	if _, err := keystore.Load(cfg.Keys.File); err != nil {
 		return fmt.Errorf("keys: %w", err)

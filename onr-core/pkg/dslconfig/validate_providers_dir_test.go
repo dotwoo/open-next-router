@@ -1,6 +1,7 @@
 package dslconfig
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -16,4 +17,80 @@ func TestValidateProvidersDir_ConfigProviders(t *testing.T) {
 		}
 	}
 	t.Fatalf("validate providers dir failed for all candidates: %v", candidates)
+}
+
+func TestValidateProvidersDir_DeprecatedDirectiveWarnings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.conf")
+	// #nosec G306 -- test data file.
+	if err := os.WriteFile(path, []byte(`
+syntax "next-router/0.1";
+
+provider "demo" {
+  defaults {
+    upstream_config {
+      base_url = "https://api.example.com";
+    }
+    metrics {
+      usage_extract custom;
+      input_tokens = $.usage.input_tokens;
+      output_tokens = $.usage.output_tokens;
+    }
+    balance {
+      balance_mode custom;
+      path "/v1/credits";
+      balance_expr = $.data.total;
+      used = $.data.used;
+    }
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	res, err := ValidateProvidersDir(dir)
+	if err != nil {
+		t.Fatalf("ValidateProvidersDir: %v", err)
+	}
+	if len(res.Warnings) < 2 {
+		t.Fatalf("expected deprecated warnings, got %d", len(res.Warnings))
+	}
+}
+
+func TestValidateProvidersDir_NoDeprecatedDirectiveWarnings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.conf")
+	// #nosec G306 -- test data file.
+	if err := os.WriteFile(path, []byte(`
+syntax "next-router/0.1";
+
+provider "demo" {
+  defaults {
+    upstream_config {
+      base_url = "https://api.example.com";
+    }
+    metrics {
+      usage_extract custom;
+      input_tokens_expr = $.usage.input_tokens;
+      output_tokens_expr = $.usage.output_tokens;
+    }
+    balance {
+      balance_mode custom;
+      path "/v1/credits";
+      balance_expr = $.data.total;
+      used_expr = $.data.used;
+    }
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	res, err := ValidateProvidersDir(dir)
+	if err != nil {
+		t.Fatalf("ValidateProvidersDir: %v", err)
+	}
+	if len(res.Warnings) != 0 {
+		t.Fatalf("expected no warnings, got %d: %#v", len(res.Warnings), res.Warnings)
+	}
 }
